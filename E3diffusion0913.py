@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 def remove_mean(x:torch.tensor):
-    mean = torch.mean(x,dim=1,keepdim=True)
+    mean = torch.mean(x,dim=0,keepdim=True)
     x = x - mean
     return x
 
