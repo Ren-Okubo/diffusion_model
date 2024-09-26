@@ -18,7 +18,8 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
-from E3diffusion import E3DiffusionProcess, remove_mean
+#from E3diffusion import E3DiffusionProcess, remove_mean
+from E3diffusion0913 import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 
 def write_xyz_for_prediction_only_si(save_name,coords:torch.tensor,prediction:torch.tensor):
@@ -110,7 +111,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409250724.pth')
+    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409200059.pth')
 
     egnn.load_state_dict(checkpoint)
 
@@ -120,8 +121,8 @@ if __name__ == '__main__':
     dataset = setupdata.npy_to_graph(data)
     train_data, val_data, test_data = setupdata.split(dataset)
 
-    data = train_data[0]
-    #data = test_data[3]  #
+    #data = train_data[0]
+    data = test_data[3]  #
     num_atom = data.spectrum.shape[0] #
     #print(data.id)
     #print(data.pos)
@@ -170,17 +171,19 @@ if __name__ == '__main__':
                 print('graph.pos:',graph.pos)
                 epsilon = remove_mean(new_x - graph.pos)
                 print('epsilon',epsilon)
-                #mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
-                #graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
-                mu = diffusion_process.mu_calculate(graph.pos,epsilon,time,s=1e-5)
-                graph.pos = diffusion_process.reverse_onestep(mu,time,s=1e-5)
+                mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
+                graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
+                #mu = diffusion_process.mu_calculate(graph.pos,epsilon,time,s=1e-5)
+                #graph.pos = diffusion_process.reverse_onestep(mu,time,s=1e-5)
             """
             if time%100 == 0:
                 print('graph.pos',graph.pos)
                 print('epsilon:',epsilon)
-            """
+            
             if not torch.isfinite(graph.pos).all():
                 raise ValueError('nan')
+
+            """
             
     print('graph.id:',data.id)
     print('coords at time 0:',graph.pos)

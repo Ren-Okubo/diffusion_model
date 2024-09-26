@@ -14,7 +14,8 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
-from E3diffusion import E3DiffusionProcess, remove_mean
+#from E3diffusion import E3DiffusionProcess, remove_mean
+from E3diffusion0913 import E3DiffusionProcess, remove_mean
 
 import wandb
 
@@ -165,8 +166,8 @@ if __name__ == "__main__":
                     diffused_pos.append(pos_after_diffusion)
                     y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
                 elif params['diffusion_process'] == 'E3':
-                    #pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
-                    pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
+                    pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                    #pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
                     diffused_pos.append(pos_after_diffusion)
                     y.append(noise)
             diffused_pos = torch.cat(diffused_pos,dim=0)
@@ -233,8 +234,8 @@ if __name__ == "__main__":
                         diffused_pos.append(pos_after_diffusion)
                         y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
                     elif params['diffusion_process'] == 'E3':
-                        #pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
-                        pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
+                        pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                        #pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
                         diffused_pos.append(pos_after_diffusion)
                         y.append(noise)
                 diffused_pos = torch.cat(diffused_pos,dim=0)
