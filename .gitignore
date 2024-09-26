@@ -1,2 +1,11 @@
 *.png
 *.pth
+*.pyc
+e3_diffusion_for_molecules/
+GeoDiff/
+__pycache__/
+wandb/
+model_state/
+*.xyz
+dataset/
+RDF/*.npz
