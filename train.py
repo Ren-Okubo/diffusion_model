@@ -1,0 +1,277 @@
+import torch, copy, itertools, random, datetime, pdb, yaml
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset, random_split, Subset
+import numpy as np
+import torch.nn.init as init
+from diffusion_process import DiffusionProcess
+import split_to_train_and_test
+from split_to_train_and_test import SetUpData
+from GeoDiffEGNN import GCL, EGNN, EquivariantEpsilon
+from EquivariantGraphNeuralNetwork import EquivariantGNN, EGCL
+from CN import MLP
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import MessagePassing
+from torch.optim.lr_scheduler import StepLR
+from E3diffusion import E3DiffusionProcess, remove_mean
+
+import wandb
+
+class EarlyStopping():
+    def __init__(self, patience=0):
+        self._step= 0
+        self._loss=float('inf')
+        self._patience=patience
+
+    def validate(self,loss):
+        if self._loss < loss:
+            self._step += 1
+            if self._step > self._patience:
+                return True
+        else:
+            self._step = 0
+            self._loss = loss
+       
+        return False
+
+if __name__ == "__main__":
+    with open('parameters.yaml','r') as file:
+        params = yaml.safe_load(file)
+
+    now = datetime.datetime.now()
+    
+    params['now'] = now.strftime("%Y%m%d%H%M")
+
+    wandb.init(project='diffusion0926~',config=params,name='E3diffuser s=1.0e-5 diffusionsteps=1000 patience500')
+    
+    seed = params['seed']
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    num_diffusion_timestep = params['num_diffusion_timestep']
+    initial_beta = params['initial_beta']
+    final_beta = params['final_beta']
+    num_epochs = params['num_epochs']
+    schedule_func = params['schedule_func']
+    if params['diffusion_process'] == 'GeoDiff':
+        diffusion_process = DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep,schedule_func=schedule_func)
+        equivariant_epsilon = EquivariantEpsilon(initial_beta,final_beta,num_diffusion_timestep)
+    elif params['diffusion_process'] == 'E3':
+        diffusion_process = E3DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep=num_diffusion_timestep,schedule_function=schedule_func)
+    batch_size = params['batch_size']
+
+    conditional = params['conditional']
+
+    atom_type_size = params['atom_type_size']
+    spectrum_size = params['spectrum_size']
+    t_size = params['t_size']
+    x_size = params['x_size']
+    m_size = params['m_size']
+    d_size = params['d_size']
+    if conditional:
+        h_size = spectrum_size + atom_type_size + t_size
+    else:
+        h_size = atom_type_size + t_size
+    
+    L= params['L'] #Lの値を大きくしすぎるとnanが出る（15のときに）
+    lr = params['lr']
+    weight_decay = params['weight_decay']
+
+    max_grad_norm = params['max_grad_norm']
+
+    m_input_size = h_size + h_size + d_size
+    m_output_size = m_size
+    m_hidden_size = params['m_hidden_size']
+
+    h_input_size = h_size + m_size
+    h_output_size = h_size
+    h_hidden_size = params['h_hidden_size']
+
+    if params['mlp_x_input'] == 'E3':
+        x_input_size = h_size + h_size + d_size
+    else:
+        x_input_size = m_size
+    x_output_size = 1
+    x_hidden_size = params['x_hidden_size']
+
+    aligned_standard = params['aligned_standard']
+
+    epsilon_prediction = params['epsilon_prediction']
+
+    
+    early_stopping = EarlyStopping(patience=params['patience'])
+    message_passing = MessagePassing(aggr='sum',flow='target_to_source')
+    setupdata = SetUpData(seed=seed,conditional=conditional)
+
+    data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
+    dataset = setupdata.npy_to_graph(data)
+    train_data, val_data, test_data = setupdata.split(dataset)
+
+    train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True)
+    val_loader = DataLoader(val_data,batch_size=batch_size,shuffle=True)
+    test_loader = DataLoader(test_data,batch_size=batch_size,shuffle=True)
+
+    time_list = [i for i in range(1,num_diffusion_timestep+1)]
+
+
+    #train
+
+    if epsilon_prediction == 'GeoDiff':
+        egnn = EGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
+    elif epsilon_prediction == 'E3':
+        egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
+    
+
+    optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
+    
+
+    criterion = nn.MSELoss(reduction='sum')
+
+    epoch_list, loss_list_train, loss_list_val = [], [], []
+
+    for epoch in range(num_epochs):
+        egnn.train()
+        epoch_loss_val = 0
+        epoch_loss_train = 0
+        num = 0
+        total_num_train_node = 0
+        total_num_val_node = 0
+        
+        for train_graph in train_loader:
+            optimizer.zero_grad()
+            num_graph = train_graph.batch.max().item()+1
+            total_num_train_node += train_graph.num_nodes
+            diffused_pos = []
+            h_list = []
+            y = []
+            attr_time_list = []
+            for i in range(num_graph):
+                graph_index = i
+                pos_to_diffuse = train_graph.pos[train_graph.batch == graph_index]
+                x_per_graph = train_graph.x[train_graph.batch == graph_index]
+                time = random.choice(time_list)
+                attr_time_list += [time for j in range(x_per_graph.shape[0])]
+                time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                if conditional:
+                    spectrum_per_graph = train_graph.spectrum[train_graph.batch == graph_index]
+                    h_per_graph = torch.cat((x_per_graph,spectrum_per_graph,time_tensor),dim=1)
+                else:
+                    h_per_graph = torch.cat((x_per_graph,time_tensor),dim=1) 
+                h_list.append(h_per_graph)
+                if params['diffusion_process'] == 'GeoDiff':
+                    pos_after_diffusion = diffusion_process.diffuse_zero_to_t_torch(pos_to_diffuse,time)                
+                    diffused_pos.append(pos_after_diffusion)
+                    y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
+                elif params['diffusion_process'] == 'E3':
+                    #pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                    pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
+                    diffused_pos.append(pos_after_diffusion)
+                    y.append(noise)
+            diffused_pos = torch.cat(diffused_pos,dim=0)
+            h = torch.cat(h_list,dim=0)
+            y = torch.cat(y,dim=0)
+            train_graph.diffused_coords = diffused_pos
+            train_graph.h = h
+            train_graph.y = y
+            train_graph.pos = diffused_pos
+            train_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
+            
+            if epsilon_prediction == 'GeoDiff':
+                h, coords = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords,train_graph.pos)
+                epsilon = equivariant_epsilon.calculate(train_graph.batch,coords,train_graph.pos,train_graph.time,aligned_standard=aligned_standard)
+            elif epsilon_prediction == 'E3':
+                h, x = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords)
+                epsilon = x - train_graph.diffused_coords
+                epsilon = remove_mean(epsilon)
+
+            """
+            if not torch.isfinite(new_x).all():
+                print(train_graph)
+                print(train_graph.diffused_coords)
+                print(train_graph.pos)
+                print(train_graph.h)
+                print(num)
+            """
+            #print('epsilon : ',epsilon)
+            loss = criterion(epsilon,train_graph.y)
+            loss.backward()
+            #torch.nn.utils.clip_grad_norm_(model_x.parameters(), max_grad_norm)
+            #torch.nn.utils.clip_grad_norm_(model_h.parameters(), max_grad_norm)
+            optimizer.step()
+            epoch_loss_train += loss.item()
+            num += 1
+        
+
+        egnn.eval()
+        
+        with torch.no_grad():
+            for val_graph in val_loader:
+                optimizer.zero_grad()
+                num_graph = val_graph.batch.max().item()+1
+                total_num_val_node += val_graph.num_nodes
+                diffused_pos = []
+                h_list = []
+                y = []
+                attr_time_list = []
+                for i in range(num_graph):
+                    graph_index = i
+                    pos_to_diffuse = val_graph.pos[val_graph.batch == graph_index]
+                    x_per_graph = val_graph.x[val_graph.batch == graph_index]
+                    time = random.choice(time_list)
+                    attr_time_list += [time for j in range(x_per_graph.shape[0])]
+                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                    if conditional:
+                        spectrum_per_graph = val_graph.spectrum[val_graph.batch == graph_index]
+                        h_per_graph = torch.cat((x_per_graph,spectrum_per_graph,time_tensor),dim=1)
+                    else:
+                        h_per_graph = torch.cat((x_per_graph,time_tensor),dim=1) 
+                    h_list.append(h_per_graph)
+                    if params['diffusion_process'] == 'GeoDiff':
+                        pos_after_diffusion = diffusion_process.diffuse_zero_to_t_torch(pos_to_diffuse,time)                
+                        diffused_pos.append(pos_after_diffusion)
+                        y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
+                    elif params['diffusion_process'] == 'E3':
+                        #pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                        pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
+                        diffused_pos.append(pos_after_diffusion)
+                        y.append(noise)
+                diffused_pos = torch.cat(diffused_pos,dim=0)
+                h = torch.cat(h_list,dim=0)
+                y = torch.cat(y,dim=0)
+                val_graph.diffused_coords = diffused_pos
+                val_graph.h = h
+                val_graph.y = y
+                val_graph.pos = diffused_pos
+                val_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
+                
+
+                if epsilon_prediction == 'GeoDiff':
+                    h, coords = egnn(val_graph.edge_index,val_graph.h,val_graph.diffused_coords,val_graph.pos)
+                    epsilon = equivariant_epsilon.calculate(val_graph.batch,coords,val_graph.pos,val_graph.time,aligned_standard=aligned_standard)
+                elif epsilon_prediction == 'E3':
+                    h, x = egnn(val_graph.edge_index,val_graph.h,val_graph.diffused_coords)
+                    epsilon = x - val_graph.diffused_coords
+                    epsilon = remove_mean(epsilon)
+
+                loss = criterion(epsilon,val_graph.y)
+                epoch_loss_val += loss.item()
+        avg_loss_val = epoch_loss_val / total_num_val_node
+        avg_loss_train = epoch_loss_train / total_num_train_node
+
+
+        epoch_list.append(epoch)
+        loss_list_val.append(avg_loss_val)
+        loss_list_train.append(avg_loss_train)
+        print("epoch : ",epoch,"    loss_train : ",avg_loss_train,"    loss_val : ",avg_loss_val)
+        wandb.log({"loss_train":avg_loss_train,"loss_val":avg_loss_val})
+        if early_stopping.validate(avg_loss_train):
+            break
+    
+
+    model_states = egnn.state_dict()
+
+    torch.save(model_states,"./model_state/model_to_predict_epsilon/egnn_"+now.strftime("%Y%m%d%H%M")+".pth")
+    
+    
