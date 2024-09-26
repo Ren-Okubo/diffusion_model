@@ -36,8 +36,8 @@ class E3DiffusionProcess():
         squared_sigma_s = 1 - self.alpha_bar_schedule[t-1]
         alpha_ts = alpha_t / alpha_s
         squared_sigma_ts = squared_sigma_t - torch.pow(alpha_ts,2) * squared_sigma_s
-        #x_hat = (pos - torch.sqrt(1 - self.alpha_bar_schedule[t]) * epsilon) / torch.sqrt(self.alpha_schedule[t])
-        x_hat = pos / alpha_t - torch.sqrt(squared_sigma_t) / alpha_t * epsilon
+        x_hat = (pos - torch.sqrt(1 - self.alpha_bar_schedule[t]) * epsilon) / torch.sqrt(self.alpha_schedule[t])
+        #x_hat = pos / alpha_t - torch.sqrt(squared_sigma_t) / alpha_t * epsilon
         if not torch.isfinite(x_hat).all():
             print('time',t)
             print('pos',pos)
