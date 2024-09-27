@@ -62,8 +62,7 @@ if __name__ == '__main__':
     #initial_beta = 1.0*10**(-7)
     #final_beta = 2.0*10**(-3)
     num_diffusion_timestep = params['num_diffusion_timestep']
-    initial_beta = params['initial_beta']
-    final_beta = params['final_beta']
+    noise_precision = params['noise_precision']
     num_epochs = params['num_epochs']
 
     batch_size = params['batch_size']
@@ -114,7 +113,7 @@ if __name__ == '__main__':
         diffusion_process = DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep)
         equivariant_epsilon = EquivariantEpsilon(initial_beta,final_beta,num_diffusion_timestep)
     elif params['diffusion_process'] == 'E3':
-        diffusion_process = E3DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep)
+        diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep)
     
 
 

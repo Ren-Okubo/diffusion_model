@@ -44,7 +44,7 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='diffusion0926~',config=params,name='initial=0.0001, final=0.01, num_steps=5000, patience=500')
+    wandb.init(project='changed_E3NoiseSchedule',config=params)
     
     seed = params['seed']
     random.seed(seed)
@@ -52,15 +52,13 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
 
     num_diffusion_timestep = params['num_diffusion_timestep']
-    initial_beta = params['initial_beta']
-    final_beta = params['final_beta']
+    noise_precision = params['noise_precision']
     num_epochs = params['num_epochs']
-    schedule_func = params['schedule_func']
     if params['diffusion_process'] == 'GeoDiff':
         diffusion_process = DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep,schedule_func=schedule_func)
         equivariant_epsilon = EquivariantEpsilon(initial_beta,final_beta,num_diffusion_timestep)
     elif params['diffusion_process'] == 'E3':
-        diffusion_process = E3DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep=num_diffusion_timestep,schedule_function=schedule_func)
+        diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
     batch_size = params['batch_size']
 
     conditional = params['conditional']
@@ -167,7 +165,6 @@ if __name__ == "__main__":
                     y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
                 elif params['diffusion_process'] == 'E3':
                     pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
-                    #pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
                     diffused_pos.append(pos_after_diffusion)
                     y.append(noise)
             diffused_pos = torch.cat(diffused_pos,dim=0)
@@ -187,14 +184,6 @@ if __name__ == "__main__":
                 epsilon = x - train_graph.diffused_coords
                 epsilon = remove_mean(epsilon)
 
-            """
-            if not torch.isfinite(new_x).all():
-                print(train_graph)
-                print(train_graph.diffused_coords)
-                print(train_graph.pos)
-                print(train_graph.h)
-                print(num)
-            """
             #print('epsilon : ',epsilon)
             loss = criterion(epsilon,train_graph.y)
             loss.backward()
@@ -235,7 +224,6 @@ if __name__ == "__main__":
                         y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
                     elif params['diffusion_process'] == 'E3':
                         pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
-                        #pos_after_diffusion, noise = diffusion_process.diffuse_to_t(pos_to_diffuse,time,s=1.0e-5)
                         diffused_pos.append(pos_after_diffusion)
                         y.append(noise)
                 diffused_pos = torch.cat(diffused_pos,dim=0)
