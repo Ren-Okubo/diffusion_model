@@ -44,7 +44,7 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='diffusion0926~',config=params,name='E3diffuser s=1.0e-5 diffusionsteps=1000 patience500')
+    wandb.init(project='diffusion0926~',config=params,name='initial=0.0001, final=0.01, num_steps=5000, patience=500')
     
     seed = params['seed']
     random.seed(seed)

@@ -1,4 +1,4 @@
-import torch, copy, itertools, random, datetime, pdb, sys, yaml
+import torch, copy, itertools, random, datetime, pdb, sys, yaml, os
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split, Subset
@@ -22,23 +22,32 @@ from E3diffusion import E3DiffusionProcess, remove_mean
 #from E3diffusion0913 import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 
-def write_xyz_for_prediction_only_si(save_name,coords:torch.tensor,prediction:torch.tensor):
+def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None):
     file_name = '/home/rokubo/data/diffusion_model/test_vesta/' + str(save_name) + '.xyz'
-    N = coords.shape[0]
-    with open(file_name,'w') as f:
-        f.write(str(N*2)+'\n')
-        f.write('\n')
-        for i in range(N):
-            if i == 0:
-                f.write('O '+str(coords[i][0].item())+' '+str(coords[i][1].item())+' '+str(coords[i][2].item())+'\n')
-            else:
-                f.write('Si '+str(coords[i][0].item())+' '+str(coords[i][1].item())+' '+str(coords[i][2].item())+'\n')
-        for i in range(N):
-            if i == 0:
-                f.write('F '+str(prediction[i][0].item())+' '+str(prediction[i][1].item())+' '+str(prediction[i][2].item())+'\n')
-            else:
-                f.write('Al '+str(prediction[i][0].item())+' '+str(prediction[i][1].item())+' '+str(prediction[i][2].item())+'\n')
-    
+    N = original_coords.shape[0]
+    if original_coords is not None:
+        with open(file_name,'w') as f:
+            f.write(str(N*2)+'\n')
+            f.write('\n')
+            for i in range(N):
+                if i == 0:
+                    f.write('F '+str(original_coords[i][0].item())+' '+str(original_coords[i][1].item())+' '+str(original_coords[i][2].item())+'\n')
+                else:
+                    f.write('Al '+str(original_coords[i][0].item())+' '+str(original_coords[i][1].item())+' '+str(original_coords[i][2].item())+'\n')
+            for i in range(N):
+                if i == 0:
+                    f.write('O '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
+                else:
+                    f.write('Si '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
+    else:
+        with open(file_name,'w') as f:
+            f.write(str(N)+'\n')
+            f.write('\n')
+            for i in range(N):
+                if i == 0:
+                    f.write('O '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
+                else:
+                    f.write('Si '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
 
 if __name__ == '__main__':
     with open('parameters.yaml','r') as file:
@@ -111,7 +120,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409200059.pth')
+    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409260956.pth')
 
     egnn.load_state_dict(checkpoint)
 
@@ -165,6 +174,10 @@ if __name__ == '__main__':
                 graph.node = graph.pos
             elif params['diffusion_process'] == 'E3':
                 new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
+                if time in list(range(num_diffusion_timestep,0,-100)):
+                    os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/'+str(data.id),exist_ok=True)
+                    save_name = str(data.id) + '/' + str(data.id) + '_' + str(time)
+                    write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos)
                 print('time:',time)
                 print('new_x:',new_x)
                 print('graph.pos:',graph.pos)
@@ -188,7 +201,8 @@ if __name__ == '__main__':
     print('coords at time 0:',graph.pos)
     print(data.pos)
     
-    #write_xyz_for_prediction_only_si(data.id,graph.pos,data.pos)
+    save_name = str(data.id) + '/' + str(data.id) + '_0'
+    write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos)
 
 
     
