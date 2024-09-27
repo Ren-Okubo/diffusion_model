@@ -15,7 +15,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
 #from E3diffusion import E3DiffusionProcess, remove_mean
-from E3diffusion0913 import E3DiffusionProcess, remove_mean
+from E3diffusion_new import E3DiffusionProcess, remove_mean
 
 import wandb
 

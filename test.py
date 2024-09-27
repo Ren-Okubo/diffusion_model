@@ -18,8 +18,8 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
-from E3diffusion import E3DiffusionProcess, remove_mean
-#from E3diffusion0913 import E3DiffusionProcess, remove_mean
+#from E3diffusion import E3DiffusionProcess, remove_mean
+from E3diffusion_new import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 
 def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None):
