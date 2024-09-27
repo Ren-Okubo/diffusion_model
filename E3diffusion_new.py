@@ -23,12 +23,18 @@ class E3DiffusionProcess():
     
     def calculate_mu(self,pos:torch.tensor,epsilon:torch.tensor,t:int):
         alpha_t = self.alpha_schedule[t]
+        print('t:',self.t[5000])
+        print('alpha_t:',alpha_t)
+        print('alpha_schedule:',self.alpha_schedule)
+        print(self.sigma_schedule[t])
         alpha_s = self.alpha_schedule[t-1]
         squared_sigma_t = 1 - alpha_t**2
         squared_sigma_s = 1 - alpha_s**2
         alpha_ts = alpha_t / alpha_s
         squared_sigma_ts = squared_sigma_t - torch.pow(alpha_ts,2) * squared_sigma_s
         x_hat = (pos - self.sigma_schedule[t] * epsilon) / alpha_t
+        print('x_hat:',x_hat)
+        print(alpha_s*squared_sigma_ts/squared_sigma_t)
         mu = alpha_ts * squared_sigma_s * pos / squared_sigma_t + alpha_s * squared_sigma_ts * x_hat / squared_sigma_t
         return mu
     
@@ -43,6 +49,7 @@ class E3DiffusionProcess():
         noise = torch.zeros_like(mu)
         noise.normal_(mean=0,std=1)
         noise = remove_mean(noise)
+        print('mu:',mu)
         pos = mu + std * noise
         return pos
     
