@@ -177,7 +177,6 @@ if __name__ == '__main__':
                 f.write('O '+str(pos_after_diffuse[0][0].item())+' '+str(pos_after_diffuse[0][1].item())+' '+str(pos_after_diffuse[0][2].item())+'\n')
                 for i in range(1,5):
                     f.write('Si '+str(pos_after_diffuse[i][0].item())+' '+str(pos_after_diffuse[i][1].item())+' '+str(pos_after_diffuse[i][2].item())+'\n')
-"""
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -196,4 +195,9 @@ if __name__ == '__main__':
     plt.ylabel('alpha_bar')
     plt.savefig('alpha_bar_schedule_final.png')
     plt.close()
-
+"""
+if __name__ == '__main__':
+    diffusion_process = E3DiffusionProcess(0.00001,0.002,5000)
+    alpha_schedule = diffusion_process.polynomial_schedule(5000,s=1e-4)
+    print(alpha_schedule)
+    print(torch.sqrt(1-alpha_schedule**2))

@@ -117,7 +117,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409270348.pth')
+    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409300147.pth')
 
     egnn.load_state_dict(checkpoint)
 
@@ -128,10 +128,11 @@ if __name__ == '__main__':
     train_data, val_data, test_data = setupdata.split(dataset)
 
     #data = train_data[0]
-    data = test_data[3]  #
+    data = test_data[9]  #
     num_atom = data.spectrum.shape[0] #
     print(data.id)
-    #print(data.pos)
+    print(data.pos)
+    pdb.set_trace()
     
     edge_index = []
     for i in range(num_atom):
@@ -140,6 +141,7 @@ if __name__ == '__main__':
                 edge_index.append([i, j])
     initial_coords = torch.zeros(size=(num_atom,3))
     initial_coords.normal_()
+    initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
     atom_type = [[1,0]]
     for i in range(num_atom-1):
         atom_type.append([0,1])
@@ -171,12 +173,12 @@ if __name__ == '__main__':
                 graph.node = graph.pos
             elif params['diffusion_process'] == 'E3':
                 new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
-                """
+                
                 if time in list(range(num_diffusion_timestep,0,-100)):
                     os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/'+str(data.id),exist_ok=True)
                     save_name = str(data.id) + '/' + str(data.id) + '_' + str(time)
                     write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos)
-                """
+                
                 print('time:',time)
                 print('new_x:',new_x)
                 print('graph.pos:',graph.pos)
@@ -186,23 +188,23 @@ if __name__ == '__main__':
                 graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
                 #mu = diffusion_process.mu_calculate(graph.pos,epsilon,time,s=1e-5)
                 #graph.pos = diffusion_process.reverse_onestep(mu,time,s=1e-5)
-                pdb.set_trace()
+
             """
             if time%100 == 0:
                 print('graph.pos',graph.pos)
                 print('epsilon:',epsilon)
-            
+            """
             if not torch.isfinite(graph.pos).all():
                 raise ValueError('nan')
 
-            """
+            
             
     print('graph.id:',data.id)
     print('coords at time 0:',graph.pos)
     print(data.pos)
     
     save_name = str(data.id) + '/' + str(data.id) + '_0'
-    #write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos)
+    write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos)
 
 
     

@@ -44,7 +44,7 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='changed_E3NoiseSchedule',config=params)
+    wandb.init(project='changed_E3NoiseSchedule',config=params,name='noise_precision=1e-4')
     
     seed = params['seed']
     random.seed(seed)
