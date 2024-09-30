@@ -1,9 +1,15 @@
 import torch
 import torch.nn as nn
 
-def remove_mean(x:torch.tensor):
-    mean = torch.mean(x,dim=0,keepdim=True)
-    x = x - mean
+def remove_mean(x:torch.tensor,batch_index=None):
+    if batch_index is None:
+        mean = torch.mean(x,dim=0,keepdim=True)
+        x = x - mean
+    else:
+        num_graph = batch_index.max().item()+1
+        for i in range(num_graph):
+            mean = torch.mean(x[batch_index==i],dim=0,keepdim=True)
+            x[batch_index==i] = x[batch_index==i] - mean
     return x
 
 class E3DiffusionProcess():

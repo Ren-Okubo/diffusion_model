@@ -134,7 +134,6 @@ if __name__ == "__main__":
         egnn.train()
         epoch_loss_val = 0
         epoch_loss_train = 0
-        num = 0
         total_num_train_node = 0
         total_num_val_node = 0
         
@@ -182,16 +181,16 @@ if __name__ == "__main__":
             elif epsilon_prediction == 'E3':
                 h, x = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords)
                 epsilon = x - train_graph.diffused_coords
-                epsilon = remove_mean(epsilon)
+                epsilon = remove_mean(epsilon,batch_index=train_graph.batch)
 
             #print('epsilon : ',epsilon)
             loss = criterion(epsilon,train_graph.y)
+            loss = loss / num_graph
             loss.backward()
             #torch.nn.utils.clip_grad_norm_(model_x.parameters(), max_grad_norm)
             #torch.nn.utils.clip_grad_norm_(model_h.parameters(), max_grad_norm)
             optimizer.step()
             epoch_loss_train += loss.item()
-            num += 1
         
 
         egnn.eval()
@@ -242,7 +241,7 @@ if __name__ == "__main__":
                 elif epsilon_prediction == 'E3':
                     h, x = egnn(val_graph.edge_index,val_graph.h,val_graph.diffused_coords)
                     epsilon = x - val_graph.diffused_coords
-                    epsilon = remove_mean(epsilon)
+                    epsilon = remove_mean(epsilon,batch_index=val_graph.batch)
 
                 loss = criterion(epsilon,val_graph.y)
                 epoch_loss_val += loss.item()
