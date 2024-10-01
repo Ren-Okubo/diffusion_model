@@ -1,4 +1,4 @@
-import torch, copy, itertools, random, datetime, pdb, yaml
+import torch, copy, itertools, random, datetime, pdb, yaml, pytz
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split, Subset
@@ -40,11 +40,12 @@ if __name__ == "__main__":
     with open('parameters.yaml','r') as file:
         params = yaml.safe_load(file)
 
-    now = datetime.datetime.now()
+    jst = pytz.timezone('Asia/Tokyo')
+    now = datetime.datetime.now(jst)
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='changed_E3NoiseSchedule',config=params,name='noise_precision=1e-4')
+    wandb.init(project='changed_E3NoiseSchedule',config=params,name='noise_precision=1e-4 after fix loss and remove mean')
     
     seed = params['seed']
     random.seed(seed)
@@ -190,6 +191,7 @@ if __name__ == "__main__":
             #torch.nn.utils.clip_grad_norm_(model_x.parameters(), max_grad_norm)
             #torch.nn.utils.clip_grad_norm_(model_h.parameters(), max_grad_norm)
             optimizer.step()
+            loss = loss * num_graph
             epoch_loss_train += loss.item()
         
 

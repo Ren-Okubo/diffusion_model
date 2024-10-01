@@ -22,8 +22,11 @@ from torch.optim.lr_scheduler import StepLR
 from E3diffusion_new import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 
-def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None):
-    file_name = '/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/' + str(save_name) + '.xyz'
+def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
+    if mode == 'individual':
+        file_name = '/home/rokubo/data/diffusion_model/test_vesta/individual/' + str(save_name) + '.xyz'
+    elif mode == 'seed_dependence':
+        file_name = '/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/' + str(save_name) + '.xyz'
     N = original_coords.shape[0]
     if original_coords is not None:
         with open(file_name,'w') as f:
@@ -117,7 +120,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409300147.pth')
+    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/egnn_202409300938.pth')
 
     egnn.load_state_dict(checkpoint)
 
@@ -127,11 +130,11 @@ if __name__ == '__main__':
     dataset = setupdata.npy_to_graph(data)
     train_data, val_data, test_data = setupdata.split(dataset)
 
-    for seed in list(range(12,99)):
-        #seed = 11
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
+    for seed_value in [2024]:
+        
+        torch.manual_seed(seed_value)
+        np.random.seed(seed_value)
+        random.seed(seed_value)
         #data = train_data[0]
         data = test_data[10]  #
         num_atom = data.spectrum.shape[0] #
@@ -159,6 +162,9 @@ if __name__ == '__main__':
             graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords)
         graph.node = graph.pos
 
+
+        record_time = list(range(100,num_diffusion_timestep+100,100))
+        record_mode = 'individual'
         egnn.eval()
         with torch.no_grad():
             for time in list(range(num_diffusion_timestep,0,-1)):
@@ -181,12 +187,15 @@ if __name__ == '__main__':
                 elif params['diffusion_process'] == 'E3':
                     new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
                     
-                    #if time in list(range(num_diffusion_timestep,0,-100)):
-                    if time == 5000:
-                        os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/'+str(data.id),exist_ok=True)
-                        save_name = str(data.id) + '/' + 'seed' + str(seed) + '_' + str(data.id) + '_' + str(time)
-                        write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos)
-                    
+                    if time in record_time:
+                        if record_mode == 'individual':
+                            os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/individual/'+str(data.id),exist_ok=True)
+                            save_name = str(data.id) + '/' + str(data.id) + '_' + str(time)
+                        elif record_mode == 'seed_dependence':
+                            os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/'+str(data.id),exist_ok=True)
+                            save_name = str(data.id) + '/' + 'seed' + str(seed) + '_' + str(data.id) + '_' + str(time)
+                        write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+                        
                     print('time:',time)
                     print('new_x:',new_x)
                     print('graph.pos:',graph.pos)
@@ -211,7 +220,10 @@ if __name__ == '__main__':
         print('coords at time 0:',graph.pos)
         print(data.pos)
         
-        save_name = str(data.id) + '/' + 'seed' + str(seed) + '_' + str(data.id) + '_0'
-        write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos)
+        if record_mode == 'individual':
+            save_name = str(data.id) + '/' + str(data.id) + '_0'
+        elif record_mode == 'seed_dependence':
+            save_name = str(data.id) + '/' + 'seed' + str(seed) + '_' + str(data.id) + '_0'
+        write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
 
 
