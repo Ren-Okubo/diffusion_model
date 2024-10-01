@@ -74,6 +74,8 @@ if __name__ == "__main__":
         h_size = spectrum_size + atom_type_size + t_size
     else:
         h_size = atom_type_size + t_size
+
+    onehot_scaling_factor = params['onehot_scaling_factor']
     
     L= params['L'] #Lの値を大きくしすぎるとnanが出る（15のときに）
     lr = params['lr']
@@ -155,9 +157,9 @@ if __name__ == "__main__":
                 time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
                 if conditional:
                     spectrum_per_graph = train_graph.spectrum[train_graph.batch == graph_index]
-                    h_per_graph = torch.cat((x_per_graph,spectrum_per_graph,time_tensor),dim=1)
+                    h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
                 else:
-                    h_per_graph = torch.cat((x_per_graph,time_tensor),dim=1) 
+                    h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,time_tensor),dim=1) 
                 h_list.append(h_per_graph)
                 if params['diffusion_process'] == 'GeoDiff':
                     pos_after_diffusion = diffusion_process.diffuse_zero_to_t_torch(pos_to_diffuse,time)                
@@ -215,9 +217,9 @@ if __name__ == "__main__":
                     time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
                     if conditional:
                         spectrum_per_graph = val_graph.spectrum[val_graph.batch == graph_index]
-                        h_per_graph = torch.cat((x_per_graph,spectrum_per_graph,time_tensor),dim=1)
+                        h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
                     else:
-                        h_per_graph = torch.cat((x_per_graph,time_tensor),dim=1) 
+                        h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,time_tensor),dim=1) 
                     h_list.append(h_per_graph)
                     if params['diffusion_process'] == 'GeoDiff':
                         pos_after_diffusion = diffusion_process.diffuse_zero_to_t_torch(pos_to_diffuse,time)                
