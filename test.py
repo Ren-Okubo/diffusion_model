@@ -18,9 +18,9 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
-#from E3diffusion import E3DiffusionProcess, remove_mean
 from E3diffusion_new import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
+from angle_evaluate import calculate_angle_for_CN2
 
 def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
     if mode == 'individual':
@@ -134,115 +134,124 @@ if __name__ == '__main__':
     dataset = setupdata.npy_to_graph(data)
     train_data, val_data, test_data = setupdata.split(dataset)
 
-    for i in range(len(train_data)):
-        if train_data[i].id == 'mp-936187_13':
-            print('train_data:',i)
-            break
-    for i in range(len(val_data)):
-        if val_data[i].id == 'mp-936187_13':
-            print('val_data:',i)
-            break
-    for i in range(len(test_data)):
-        if test_data[i].id == 'mp-936187_13':
-            print('test_data:',i)
-            break
-    pdb.set_trace()
+    
 
-    for seed_value in [2024]:
+    theta_list = [] #theta is the angle of original
+    phi_list = [] #phi is the angle of generated
+
+    for data in test_data:
+        if data.spectrum.shape[0] != 3:
+            continue
         
-        torch.manual_seed(seed_value)
-        np.random.seed(seed_value)
-        random.seed(seed_value)
-        data = train_data[913]
-        #data = test_data[9]  #
-        num_atom = data.spectrum.shape[0] #
-        """
-        print(data.id)
-        print(data.pos)
-        pdb.set_trace()
-        """
 
-        edge_index = []
-        for i in range(num_atom):
-            for j in range(num_atom):
-                if i != j:
-                    edge_index.append([i, j])
-        initial_coords = torch.zeros(size=(num_atom,3))
-        initial_coords.normal_()
-        initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
-        atom_type = [[1,0]]
-        for i in range(num_atom-1):
-            atom_type.append([0,1])
-        x = torch.tensor(atom_type,dtype=torch.float32)
-        if conditional:
-            graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords,spectrum=data.spectrum)#
-        else:
-            graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords)
-        graph.node = graph.pos
-
-
-        record_time = list(range(100,num_diffusion_timestep+100,100))
-        #record_time = [None]
-        record_mode = 'individual'
-        egnn.eval()
-        with torch.no_grad():
-            for time in list(range(num_diffusion_timestep,0,-1)):
-                """
-                if time%100 == 0:
-                    print('coords at time',time,':',graph.pos)
-                """
+        seed_value = 0
+        num_of_generated_coords = 0
+        while num_of_generated_coords != 10:
             
-                time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
-                if conditional:
-                    graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
-                else:
-                    graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
-                if params['diffusion_process'] == 'GeoDiff':
-                    new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos,graph.node)
-                    epsilon = diffusion_process.equivaliant_epsilon_torch(new_x,graph.node,time)
-                    mu = diffusion_process.calculate_mu(graph.node,epsilon,time)
-                    graph.pos = diffusion_process.calculate_onestep_before(mu,time)
-                    graph.node = graph.pos
-                elif params['diffusion_process'] == 'E3':
-                    new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
-                    
-                    if time in record_time:
-                        if record_mode == 'individual':
-                            os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/individual/'+str(data.id)+'_'+model_path,exist_ok=True)
-                            save_name = str(data.id)+'_'+model_path + '/' + str(data.id) + '_' + str(time)
-                        elif record_mode == 'seed_dependence':
-                            os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/'+str(data.id)+'_'+model_path,exist_ok=True)
-                            save_name = str(data.id)+'_'+model_path + '/' + 'seed' + str(seed_value) + '_' + str(data.id) + '_' + str(time)
-                        write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
-                        
-                    print('time:',time)
-                    print('new_x:',new_x)
-                    print('graph.pos:',graph.pos)
-                    epsilon = remove_mean(new_x - graph.pos)
-                    print('epsilon',epsilon)
-                    mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
-                    graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
-                    #mu = diffusion_process.mu_calculate(graph.pos,epsilon,time,s=1e-5)
-                    #graph.pos = diffusion_process.reverse_onestep(mu,time,s=1e-5)
+            torch.manual_seed(seed_value)
+            np.random.seed(seed_value)
+            random.seed(seed_value)
+            #data = train_data[913]
+            #data = test_data[9]  #
+            num_atom = data.spectrum.shape[0] #
 
-                """
-                if time%100 == 0:
-                    print('graph.pos',graph.pos)
-                    print('epsilon:',epsilon)
-                """
-                if not torch.isfinite(graph.pos).all():
-                    raise ValueError('nan')
 
+            edge_index = []
+            for i in range(num_atom):
+                for j in range(num_atom):
+                    if i != j:
+                        edge_index.append([i, j])
+            initial_coords = torch.zeros(size=(num_atom,3))
+            initial_coords.normal_()
+            initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
+            atom_type = [[1,0]]
+            for i in range(num_atom-1):
+                atom_type.append([0,1])
+            x = torch.tensor(atom_type,dtype=torch.float32)
+            if conditional:
+                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords,spectrum=data.spectrum)#
+            else:
+                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords)
+            graph.node = graph.pos
+
+
+            #record_time = list(range(100,num_diffusion_timestep+100,100))
+            #record_time = [None]
+            #record_mode = 'individual'
+            egnn.eval()
+            with torch.no_grad():
+                for time in list(range(num_diffusion_timestep,0,-1)):
+                    """
+                    if time%100 == 0:
+                        print('coords at time',time,':',graph.pos)
+                    """
                 
-                
-        print('graph.id:',data.id)
-        print('coords at time 0:',graph.pos)
-        print(data.pos)
-        
-        if record_mode == 'individual':
-            save_name = str(data.id)+'_'+model_path + '/' + str(data.id) + '_0'
-        elif record_mode == 'seed_dependence':
-            save_name = str(data.id)+'_'+model_path + '/' + 'seed' + str(seed_value) + '_' + str(data.id) + '_0'
-        write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
+                    if conditional:
+                        graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
+                    else:
+                        graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
+                    if params['diffusion_process'] == 'GeoDiff':
+                        new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos,graph.node)
+                        epsilon = diffusion_process.equivaliant_epsilon_torch(new_x,graph.node,time)
+                        mu = diffusion_process.calculate_mu(graph.node,epsilon,time)
+                        graph.pos = diffusion_process.calculate_onestep_before(mu,time)
+                        graph.node = graph.pos
+                    elif params['diffusion_process'] == 'E3':
+                        new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
+                        """
+                        if time in record_time:
+                            if record_mode == 'individual':
+                                os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/individual/'+str(data.id)+'_'+model_path,exist_ok=True)
+                                save_name = str(data.id)+'_'+model_path + '/' + str(data.id) + '_' + str(time)
+                            elif record_mode == 'seed_dependence':
+                                os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/'+str(data.id)+'_'+model_path,exist_ok=True)
+                                save_name = str(data.id)+'_'+model_path + '/' + 'seed' + str(seed_value) + '_' + str(data.id) + '_' + str(time)
+                            write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+                        """    
+                        #print('time:',time)
+                        #print('new_x:',new_x)
+                        #print('graph.pos:',graph.pos)
+                        epsilon = remove_mean(new_x - graph.pos)
+                        #print('epsilon',epsilon)
+                        mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
+                        graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
 
+                    """
+                    if time%100 == 0:
+                        print('graph.pos',graph.pos)
+                        print('epsilon:',epsilon)
+                    """
+                    if not torch.isfinite(graph.pos).all():
+                        #raise ValueError('nan')
+                        print('nan')
+                        seed_value += 1
+                        break
+            if torch.isfinite(graph.pos).all():
+                num_of_generated_coords += 1
+                seed_value += 1
+                theta_list.append(calculate_angle_for_CN2(data.pos))
+                phi_list.append(calculate_angle_for_CN2(graph.pos))
+            
+            """
+            print('graph.id:',data.id)
+            print('coords at time 0:',graph.pos)
+            print(data.pos)
+            
+            if record_mode == 'individual':
+                save_name = str(data.id)+'_'+model_path + '/' + str(data.id) + '_0'
+            elif record_mode == 'seed_dependence':
+                save_name = str(data.id)+'_'+model_path + '/' + 'seed' + str(seed_value) + '_' + str(data.id) + '_0'
+            write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+            """
+
+    np.savez('angle_comparison_between_original_and_generated.npz',theta_list=theta_list,phi_list=phi_list)
+    plt.plot(theta_list,phi_list,'o')
+    plt.plot([0,180],[0,180])
+    plt.xlim(70,180)
+    plt.ylim(70,180)
+    plt.xlabel('theta')
+    plt.ylabel('phi')
+    plt.savefig('angle_comparison_between_original_and_generated.png')
+    plt.close()
 

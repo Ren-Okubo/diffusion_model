@@ -71,7 +71,7 @@ class E3DiffusionProcess():
         noise = torch.zeros_like(mu)
         noise.normal_(mean=0,std=1)
         noise = remove_mean(noise)
-        print('mu:',mu)
+        #print('mu:',mu)
         pos = mu + std * noise
         return pos
 
