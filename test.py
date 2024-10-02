@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202409300938'
+    model_path = 'egnn_202410021731'
 
     checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth')
 
@@ -132,6 +132,15 @@ if __name__ == '__main__':
 
     data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
+
+    dataset_only_not_pi = []
+    for i in range(len(dataset)):
+        if dataset[i].pos.shape[0] == 3:
+            if calculate_angle_for_CN2(dataset[i].pos) < 179:
+                dataset_only_not_pi.append(dataset[i])
+    dataset = dataset_only_not_pi
+
+
     train_data, val_data, test_data = setupdata.split(dataset)
 
     
@@ -245,13 +254,13 @@ if __name__ == '__main__':
             write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
             """
 
-    np.savez('angle_comparison_between_original_and_generated.npz',theta_list=theta_list,phi_list=phi_list)
+    np.savez('angle_comparison_between_original_and_generated_except_180.npz',theta_list=theta_list,phi_list=phi_list)
     plt.plot(theta_list,phi_list,'o')
     plt.plot([0,180],[0,180])
     plt.xlim(70,180)
     plt.ylim(70,180)
     plt.xlabel('theta')
     plt.ylabel('phi')
-    plt.savefig('angle_comparison_between_original_and_generated.png')
+    plt.savefig('angle_comparison_between_original_and_generated_except_180.png')
     plt.close()
 

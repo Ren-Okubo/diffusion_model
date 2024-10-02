@@ -16,6 +16,7 @@ from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
 #from E3diffusion import E3DiffusionProcess, remove_mean
 from E3diffusion_new import E3DiffusionProcess, remove_mean
+from angle_evaluate import calculate_angle_for_CN2
 
 import wandb
 
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='changed_E3NoiseSchedule',config=params,name='noise_precision=1e-4 after fix loss and remove mean')
+    wandb.init(project='adjusted dataset',config=params,name='dataset except 180')
     
     seed = params['seed']
     random.seed(seed)
@@ -109,6 +110,15 @@ if __name__ == "__main__":
 
     data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
+
+    dataset_only_not_pi = []
+    for i in range(len(dataset)):
+        if dataset[i].pos.shape[0] == 3:
+            if calculate_angle_for_CN2(dataset[i].pos) < 179:
+                dataset_only_not_pi.append(dataset[i])
+    dataset = dataset_only_not_pi
+    
+
     train_data, val_data, test_data = setupdata.split(dataset)
 
     train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True)
