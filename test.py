@@ -20,7 +20,7 @@ from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
 from E3diffusion_new import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
-from angle_evaluate import calculate_angle_for_CN2
+from CN2_evaluate import calculate_angle_for_CN2
 
 def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
     if mode == 'individual':
@@ -143,19 +143,22 @@ if __name__ == '__main__':
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
-    
 
-    theta_list = [] #theta is the angle of original
-    phi_list = [] #phi is the angle of generated
+    #theta_list = [] #theta is the angle of original
+    #phi_list = [] #phi is the angle of generated
 
-    for data in test_data:
+    original_coords_list = []
+    generated_coords_list = []
+
+    #for data in test_data:
+    for data in [test_data[2]]:
         if data.spectrum.shape[0] != 3:
             continue
         
 
         seed_value = 0
         num_of_generated_coords = 0
-        while num_of_generated_coords != 10:
+        while num_of_generated_coords != 1000:
             
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
@@ -239,8 +242,10 @@ if __name__ == '__main__':
             if torch.isfinite(graph.pos).all():
                 num_of_generated_coords += 1
                 seed_value += 1
-                theta_list.append(calculate_angle_for_CN2(data.pos))
-                phi_list.append(calculate_angle_for_CN2(graph.pos))
+                #theta_list.append(calculate_angle_for_CN2(data.pos))
+                #phi_list.append(calculate_angle_for_CN2(graph.pos))
+                original_coords_list.append(data.pos)
+                generated_coords_list.append(graph.pos)
             
             """
             print('graph.id:',data.id)
@@ -254,13 +259,6 @@ if __name__ == '__main__':
             write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
             """
 
-    np.savez('angle_comparison_between_original_and_generated_except_180.npz',theta_list=theta_list,phi_list=phi_list)
-    plt.plot(theta_list,phi_list,'o')
-    plt.plot([0,180],[0,180])
-    plt.xlim(70,180)
-    plt.ylim(70,180)
-    plt.xlabel('theta')
-    plt.ylabel('phi')
-    plt.savefig('angle_comparison_between_original_and_generated_except_180.png')
-    plt.close()
+    np.savez('generated_graph_on_1000_diffrent_seeds_conditioned_by_angle_149_mp_557004_17_dataset_except_180.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+
 

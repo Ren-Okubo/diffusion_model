@@ -16,7 +16,7 @@ from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
 #from E3diffusion import E3DiffusionProcess, remove_mean
 from E3diffusion_new import E3DiffusionProcess, remove_mean
-from angle_evaluate import calculate_angle_for_CN2
+from CN2_evaluate import calculate_angle_for_CN2
 
 import wandb
 
