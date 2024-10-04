@@ -133,12 +133,11 @@ if __name__ == '__main__':
     data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
 
-    dataset_only_not_pi = []
+    dataset_only_CN2 = []
     for i in range(len(dataset)):
         if dataset[i].pos.shape[0] == 3:
-            if calculate_angle_for_CN2(dataset[i].pos) < 179:
-                dataset_only_not_pi.append(dataset[i])
-    dataset = dataset_only_not_pi
+            dataset_only_CN2.append(dataset[i])
+    dataset = dataset_only_CN2
 
 
     train_data, val_data, test_data = setupdata.split(dataset)
@@ -150,15 +149,15 @@ if __name__ == '__main__':
     original_coords_list = []
     generated_coords_list = []
 
-    #for data in test_data:
-    for data in [test_data[2]]:
+    for data in test_data:
+    #for data in [test_data[2]]:
         if data.spectrum.shape[0] != 3:
             continue
         
 
         seed_value = 0
         num_of_generated_coords = 0
-        while num_of_generated_coords != 1000:
+        while num_of_generated_coords != 10:
             
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
@@ -259,6 +258,6 @@ if __name__ == '__main__':
             write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
             """
 
-    np.savez('generated_graph_on_1000_diffrent_seeds_conditioned_by_angle_149_mp_557004_17_dataset_except_180.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+    np.savez('comparison_between_origianl_and_generated_graph_dataset_including_180.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
 
