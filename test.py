@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202410021731'
+    model_path = 'egnn_202410041755'
 
     checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth')
 
@@ -149,15 +149,15 @@ if __name__ == '__main__':
     original_coords_list = []
     generated_coords_list = []
 
-    for data in test_data:
-    #for data in [test_data[2]]:
+    #for data in test_data:
+    for data in [test_data[2]]:
         if data.spectrum.shape[0] != 3:
             continue
         
 
         seed_value = 0
         num_of_generated_coords = 0
-        while num_of_generated_coords != 10:
+        while num_of_generated_coords != 1000:
             
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
@@ -241,9 +241,11 @@ if __name__ == '__main__':
             if torch.isfinite(graph.pos).all():
                 num_of_generated_coords += 1
                 seed_value += 1
-                #theta_list.append(calculate_angle_for_CN2(data.pos))
-                #phi_list.append(calculate_angle_for_CN2(graph.pos))
-                original_coords_list.append(data.pos)
+
+                if conditional:
+                    original_coords_list.append(data.pos)
+                else:
+                    original_coords_list.append(-1)
                 generated_coords_list.append(graph.pos)
             
             """
@@ -258,6 +260,6 @@ if __name__ == '__main__':
             write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
             """
 
-    np.savez('comparison_between_origianl_and_generated_graph_dataset_including_180.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+    np.savez('abinitio_gen_by_dataset_only_CN2_including_180.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
 

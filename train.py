@@ -46,7 +46,7 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='adjusted dataset',config=params,name='dataset only CN2 including 180')
+    wandb.init(project='adjusted dataset',config=params,name='abinitio dataset only CN2 including 180')
     
     seed = params['seed']
     random.seed(seed)
