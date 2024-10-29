@@ -46,7 +46,7 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='adjusted dataset',config=params,name='abinitio dataset only CN2 including 180')
+    wandb.init(project='resized_spectrum_-1_9',config=params,name='conditional dataset only CN2 except 180')
     
     seed = params['seed']
     random.seed(seed)
@@ -110,11 +110,13 @@ if __name__ == "__main__":
 
     data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
+    dataset = setupdata.resize_spectrum(dataset=dataset,resize=spectrum_size)
 
     dataset_only_CN2 = []
     for i in range(len(dataset)):
         if dataset[i].pos.shape[0] == 3:
-            dataset_only_CN2.append(dataset[i])
+            if calculate_angle_for_CN2(dataset[i].pos) < 179:
+                dataset_only_CN2.append(dataset[i])
     dataset = dataset_only_CN2
     
 

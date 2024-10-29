@@ -27,7 +27,7 @@ def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,ori
         file_name = '/home/rokubo/data/diffusion_model/test_vesta/individual/' + str(save_name) + '.xyz'
     elif mode == 'seed_dependence':
         file_name = '/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/' + str(save_name) + '.xyz'
-    N = original_coords.shape[0]
+    N = generated_coords.shape[0]
     if original_coords is not None:
         with open(file_name,'w') as f:
             f.write(str(N*2)+'\n')
@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202410041755'
+    model_path = 'egnn_202410181216'
 
     checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth')
 
@@ -139,9 +139,15 @@ if __name__ == '__main__':
             dataset_only_CN2.append(dataset[i])
     dataset = dataset_only_CN2
 
-
     train_data, val_data, test_data = setupdata.split(dataset)
 
+
+    """
+    for i in range(len(test_data)):
+        if test_data[i].id == 'mp-1244968_81':
+            print(i)
+    pdb.set_trace()
+    """
 
     #theta_list = [] #theta is the angle of original
     #phi_list = [] #phi is the angle of generated
@@ -150,14 +156,17 @@ if __name__ == '__main__':
     generated_coords_list = []
 
     #for data in test_data:
-    for data in [test_data[2]]:
+    for data in test_data:
         if data.spectrum.shape[0] != 3:
             continue
+
+        if conditional is not True:
+            data.id = 'abinitio'
         
 
         seed_value = 0
         num_of_generated_coords = 0
-        while num_of_generated_coords != 1000:
+        while num_of_generated_coords != 10:
             
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
@@ -186,9 +195,9 @@ if __name__ == '__main__':
             graph.node = graph.pos
 
 
-            #record_time = list(range(100,num_diffusion_timestep+100,100))
+            record_time = list(range(10,num_diffusion_timestep+10,10))
             #record_time = [None]
-            #record_mode = 'individual'
+            record_mode = 'individual'
             egnn.eval()
             with torch.no_grad():
                 for time in list(range(num_diffusion_timestep,0,-1)):
@@ -218,8 +227,11 @@ if __name__ == '__main__':
                             elif record_mode == 'seed_dependence':
                                 os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/'+str(data.id)+'_'+model_path,exist_ok=True)
                                 save_name = str(data.id)+'_'+model_path + '/' + 'seed' + str(seed_value) + '_' + str(data.id) + '_' + str(time)
-                            write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
-                        """    
+                            if conditional:
+                                write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+                            else:
+                                write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=None,mode=record_mode)
+                        """
                         #print('time:',time)
                         #print('new_x:',new_x)
                         #print('graph.pos:',graph.pos)
@@ -241,13 +253,23 @@ if __name__ == '__main__':
             if torch.isfinite(graph.pos).all():
                 num_of_generated_coords += 1
                 seed_value += 1
-
+                
                 if conditional:
                     original_coords_list.append(data.pos)
                 else:
                     original_coords_list.append(-1)
                 generated_coords_list.append(graph.pos)
-            
+                print('successfully generated',num_of_generated_coords)
+                """
+                if record_mode == 'individual':
+                    save_name = str(data.id)+'_'+model_path + '/' + str(data.id) + '_0'
+                elif record_mode == 'seed_dependence':
+                    save_name = str(data.id)+'_'+model_path + '/' + 'seed' + str(seed_value) + '_' + str(data.id) + '_0'
+                if conditional:
+                    write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+                else:
+                    write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=None,mode=record_mode)
+                """
             """
             print('graph.id:',data.id)
             print('coords at time 0:',graph.pos)
@@ -257,9 +279,11 @@ if __name__ == '__main__':
                 save_name = str(data.id)+'_'+model_path + '/' + str(data.id) + '_0'
             elif record_mode == 'seed_dependence':
                 save_name = str(data.id)+'_'+model_path + '/' + 'seed' + str(seed_value) + '_' + str(data.id) + '_0'
-            write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+            if conditional:
+                write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
+            else:
+                write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=None,mode=record_mode)        
             """
-
-    np.savez('abinitio_gen_by_dataset_only_CN2_including_180.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+    np.savez('abinitio_gen_by_dataset_only_CN2_including_180_10161508.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
 
