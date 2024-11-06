@@ -4,12 +4,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split, Subset
 import numpy as np
 import torch.nn.init as init
-from diffusion_process import DiffusionProcess
 import split_to_train_and_test
 from split_to_train_and_test import SetUpData
-from GeoDiffEGNN import GCL, EGNN, EquivariantEpsilon
 from EquivariantGraphNeuralNetwork import EquivariantGNN, EGCL
-from CN import MLP
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
@@ -54,13 +51,8 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
 
     num_diffusion_timestep = params['num_diffusion_timestep']
-    noise_precision = params['noise_precision']
     num_epochs = params['num_epochs']
-    if params['diffusion_process'] == 'GeoDiff':
-        diffusion_process = DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep,schedule_func=schedule_func)
-        equivariant_epsilon = EquivariantEpsilon(initial_beta,final_beta,num_diffusion_timestep)
-    elif params['diffusion_process'] == 'E3':
-        diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
+    diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
     batch_size = params['batch_size']
 
     conditional = params['conditional']
@@ -92,18 +84,15 @@ if __name__ == "__main__":
     h_output_size = h_size
     h_hidden_size = params['h_hidden_size']
 
-    if params['mlp_x_input'] == 'E3':
-        x_input_size = h_size + h_size + d_size
-    else:
-        x_input_size = m_size
+    x_input_size = h_size + h_size + d_size
+
     x_output_size = 1
     x_hidden_size = params['x_hidden_size']
 
-    aligned_standard = params['aligned_standard']
 
-    epsilon_prediction = params['epsilon_prediction']
 
-    compressed_spectrum_dim = params['compressed_spectrum_dim']
+    to_compress_spectrum = params['to_compress_spectrum']
+    compressed_spectrum_size = params['compressed_spectrum_size']
     compressor_hidden_dim = params['compressor_hidden_dim']
 
     
@@ -111,7 +100,7 @@ if __name__ == "__main__":
     message_passing = MessagePassing(aggr='sum',flow='target_to_source')
     setupdata = SetUpData(seed=seed,conditional=conditional)
 
-    data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
+    data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
     dataset = setupdata.resize_spectrum(dataset=dataset,resize=spectrum_size)
 
@@ -133,12 +122,17 @@ if __name__ == "__main__":
 
 
     #train
+    if to_compress_spectrum:
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
+        h_size = compressed_spectrum_size + atom_type_size + t_size
+        m_input_size = h_size + h_size + d_size
+        h_input_size = h_size + m_size
+        h_output_size = h_size
+        x_input_size = h_size + h_size + d_size
 
-    if epsilon_prediction == 'GeoDiff':
-        egnn = EGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    elif epsilon_prediction == 'E3':
-        egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_dim)
+
+    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
+    
     optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
     
 
@@ -170,18 +164,17 @@ if __name__ == "__main__":
                 time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
                 if conditional:
                     spectrum_per_graph = train_graph.spectrum[train_graph.batch == graph_index]
+                    if to_compress_spectrum:
+                        spectrum_per_graph = spectrum_compressor(spectrum_per_graph)
                     h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
                 else:
                     h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,time_tensor),dim=1) 
                 h_list.append(h_per_graph)
-                if params['diffusion_process'] == 'GeoDiff':
-                    pos_after_diffusion = diffusion_process.diffuse_zero_to_t_torch(pos_to_diffuse,time)                
-                    diffused_pos.append(pos_after_diffusion)
-                    y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
-                elif params['diffusion_process'] == 'E3':
-                    pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
-                    diffused_pos.append(pos_after_diffusion)
-                    y.append(noise)
+
+                pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                diffused_pos.append(pos_after_diffusion)
+                y.append(noise)
+
             diffused_pos = torch.cat(diffused_pos,dim=0)
             h = torch.cat(h_list,dim=0)
             y = torch.cat(y,dim=0)
@@ -191,13 +184,10 @@ if __name__ == "__main__":
             train_graph.pos = diffused_pos
             train_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
             
-            if epsilon_prediction == 'GeoDiff':
-                h, coords = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords,train_graph.pos)
-                epsilon = equivariant_epsilon.calculate(train_graph.batch,coords,train_graph.pos,train_graph.time,aligned_standard=aligned_standard)
-            elif epsilon_prediction == 'E3':
-                h, x = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords)
-                epsilon = x - train_graph.diffused_coords
-                epsilon = remove_mean(epsilon,batch_index=train_graph.batch)
+
+            h, x = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords)
+            epsilon = x - train_graph.diffused_coords
+            epsilon = remove_mean(epsilon,batch_index=train_graph.batch)
 
             #print('epsilon : ',epsilon)
             loss = criterion(epsilon,train_graph.y)
@@ -230,18 +220,17 @@ if __name__ == "__main__":
                     time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
                     if conditional:
                         spectrum_per_graph = val_graph.spectrum[val_graph.batch == graph_index]
+                        if to_compress_spectrum:
+                            spectrum_per_graph = spectrum_compressor(spectrum_per_graph)
                         h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
                     else:
                         h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,time_tensor),dim=1) 
                     h_list.append(h_per_graph)
-                    if params['diffusion_process'] == 'GeoDiff':
-                        pos_after_diffusion = diffusion_process.diffuse_zero_to_t_torch(pos_to_diffuse,time)                
-                        diffused_pos.append(pos_after_diffusion)
-                        y.append(diffusion_process.equivariant_epsilon_torch(pos_to_diffuse,pos_after_diffusion,time,aligned_standard=aligned_standard))
-                    elif params['diffusion_process'] == 'E3':
-                        pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
-                        diffused_pos.append(pos_after_diffusion)
-                        y.append(noise)
+
+                    pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                    diffused_pos.append(pos_after_diffusion)
+                    y.append(noise)
+
                 diffused_pos = torch.cat(diffused_pos,dim=0)
                 h = torch.cat(h_list,dim=0)
                 y = torch.cat(y,dim=0)
@@ -252,13 +241,10 @@ if __name__ == "__main__":
                 val_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
                 
 
-                if epsilon_prediction == 'GeoDiff':
-                    h, coords = egnn(val_graph.edge_index,val_graph.h,val_graph.diffused_coords,val_graph.pos)
-                    epsilon = equivariant_epsilon.calculate(val_graph.batch,coords,val_graph.pos,val_graph.time,aligned_standard=aligned_standard)
-                elif epsilon_prediction == 'E3':
-                    h, x = egnn(val_graph.edge_index,val_graph.h,val_graph.diffused_coords)
-                    epsilon = x - val_graph.diffused_coords
-                    epsilon = remove_mean(epsilon,batch_index=val_graph.batch)
+
+                h, x = egnn(val_graph.edge_index,val_graph.h,val_graph.diffused_coords)
+                epsilon = x - val_graph.diffused_coords
+                epsilon = remove_mean(epsilon,batch_index=val_graph.batch)
 
                 loss = criterion(epsilon,val_graph.y)
                 epoch_loss_val += loss.item()
@@ -274,9 +260,12 @@ if __name__ == "__main__":
         if early_stopping.validate(avg_loss_train):
             break
     
-
-    model_states = egnn.state_dict()
-
+    model_state1 = egnn.state_dict()
+    if to_compress_spectrum:
+        model_state2 = spectrum_compressor.state_dict()
+        model_states = {'egnn':model_state1,'spectrum_compressor':model_state2}
+    else:
+        model_states = {'egnn':model_state1}
     torch.save(model_states,"./model_state/model_to_predict_epsilon/egnn_"+now.strftime("%Y%m%d%H%M")+".pth")
     
     

@@ -9,11 +9,8 @@ import torch.nn.init as init
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score, confusion_matrix, f1_score
-from diffusion_process import DiffusionProcess
 import split_to_train_and_test
 from split_to_train_and_test import SetUpData
-from GeoDiffEGNN import GCL, EGNN, EquivariantEpsilon
-from CN import MLP
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
@@ -22,6 +19,7 @@ from E3diffusion_new import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 from CN2_evaluate import calculate_angle_for_CN2
 from PIL import Image, ImageFilter
+from DataPreprocessor import SpectrumCompressor
 
 def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
     if mode == 'individual':
@@ -64,7 +62,6 @@ if __name__ == '__main__':
 
 
     num_diffusion_timestep = params['num_diffusion_timestep']
-    noise_precision = params['noise_precision']
     num_epochs = params['num_epochs']
 
     batch_size = params['batch_size']
@@ -98,40 +95,42 @@ if __name__ == '__main__':
     h_output_size = h_size
     h_hidden_size = params['h_hidden_size']
 
-    if params['mlp_x_input'] == 'E3':
-        x_input_size = h_size + h_size + d_size
-    else:
-        x_input_size = m_size
+
+    x_input_size = h_size + h_size + d_size
     x_output_size = 1
     x_hidden_size = params['x_hidden_size']
 
-    epsilon_prediction = params['epsilon_prediction']
-    
 
-    if epsilon_prediction == 'GeoDiff':
-        egnn = EGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    elif epsilon_prediction == 'E3':
-        egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    
-    if params['diffusion_process'] == 'GeoDiff':
-        diffusion_process = DiffusionProcess(initial_beta,final_beta,num_diffusion_timestep)
-        equivariant_epsilon = EquivariantEpsilon(initial_beta,final_beta,num_diffusion_timestep)
-    elif params['diffusion_process'] == 'E3':
-        diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
+    to_compress_spectrum = params['to_compress_spectrum']
+    compressed_spectrum_size = params['compressed_spectrum_size']
+    compressor_hidden_dim = params['compressor_hidden_dim']
+
+    if to_compress_spectrum:
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
+        h_size = compressed_spectrum_size + atom_type_size + t_size
+        m_input_size = h_size + h_size + d_size
+        h_input_size = h_size + m_size
+        h_output_size = h_size
+        x_input_size = h_size + h_size + d_size
+
+
+    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
+
+    diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
     
 
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202410311038'
+    model_path = 'egnn_202411061556'
 
-    checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth')
-
-    egnn.load_state_dict(checkpoint)
-
+    state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth')
+    egnn.load_state_dict(state_dicts['egnn'])
+    if to_compress_spectrum:
+        spectrum_compressor.load_state_dict(state_dicts['spectrum_compressor'])
     setupdata = SetUpData(seed,conditional)
 
-    data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
+    data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
     dataset = setupdata.resize_spectrum(dataset,resize=spectrum_size)
 
@@ -157,7 +156,141 @@ if __name__ == '__main__':
     original_coords_list = []
     generated_coords_list = []
 
-    #for data in test_data:
+    if conditional:
+        for data in test_data:
+            if data.spectrum.shape[0] != 3:
+                continue
+
+            seed_value = 0
+            num_of_generated_coords = 0
+
+            how_many_gen = 10
+            while num_of_generated_coords != how_many_gen:
+                
+                torch.manual_seed(seed_value)
+                np.random.seed(seed_value)
+                random.seed(seed_value)
+                #data = train_data[913]
+                #data = test_data[9]  #
+                num_atom = data.spectrum.shape[0] #
+
+
+                edge_index = []
+                for i in range(num_atom):
+                    for j in range(num_atom):
+                        if i != j:
+                            edge_index.append([i, j])
+                initial_coords = torch.zeros(size=(num_atom,3))
+                initial_coords.normal_()
+                initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
+                atom_type = [[1,0]]
+                for i in range(num_atom-1):
+                    atom_type.append([0,1])
+                x = torch.tensor(atom_type,dtype=torch.float32)
+                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords,spectrum=data.spectrum)#
+
+                graph.node = graph.pos
+
+
+                transition_of_coords_per_100steps = []
+                egnn.eval()
+                with torch.no_grad():
+                    for time in list(range(num_diffusion_timestep,0,-1)):
+                        if time%100 == 0:
+                            transition_of_coords_per_100steps.append(graph.pos)
+                        
+                        time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
+                        if to_compress_spectrum:
+                            compressed_spectrum = spectrum_compressor(graph.spectrum)
+                            graph.h = torch.cat((onehot_scaling_factor*graph.x,compressed_spectrum,time_tensor),dim=1)
+                        else:
+                            graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
+
+                        new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
+                        epsilon = remove_mean(new_x - graph.pos)
+                        mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
+                        graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
+
+                        if not torch.isfinite(graph.pos).all():
+                            #raise ValueError('nan')
+                            print('nan')
+                            seed_value += 1
+                            break
+                if torch.isfinite(graph.pos).all():
+                    transition_of_coords_per_100steps.append(graph.pos)
+                    transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
+                    transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
+                    num_of_generated_coords += 1
+                    seed_value += 1
+                    
+                    original_coords_list.append(data.pos)
+                    generated_coords_list.append(transition_of_coords_per_100steps)
+                    print('successfully generated',num_of_generated_coords)
+        np.savez('conditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+
+    else:
+        seed_value = 0
+        num_of_generated_coords = 0
+        how_many_gen = 1000
+
+        while num_of_generated_coords != how_many_gen:
+            
+            torch.manual_seed(seed_value)
+            np.random.seed(seed_value)
+            random.seed(seed_value)
+            #data = train_data[913]
+            #data = test_data[9]  #
+            num_atom = data.spectrum.shape[0] #
+
+
+            edge_index = []
+            for i in range(num_atom):
+                for j in range(num_atom):
+                    if i != j:
+                        edge_index.append([i, j])
+            initial_coords = torch.zeros(size=(num_atom,3))
+            initial_coords.normal_()
+            initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
+            atom_type = [[1,0]]
+            for i in range(num_atom-1):
+                atom_type.append([0,1])
+            x = torch.tensor(atom_type,dtype=torch.float32)
+            graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords)
+            graph.node = graph.pos
+
+
+            transition_of_coords_per_100steps = []
+            egnn.eval()
+            with torch.no_grad():
+                for time in list(range(num_diffusion_timestep,0,-1)):
+                    if time%100 == 0:
+                        transition_of_coords_per_100steps.append(graph.pos)
+                    
+                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
+                    graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
+                    new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
+                    epsilon = remove_mean(new_x - graph.pos)
+                    mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
+                    graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
+
+
+                    if not torch.isfinite(graph.pos).all():
+                        #raise ValueError('nan')
+                        print('nan')
+                        seed_value += 1
+                        break
+            if torch.isfinite(graph.pos).all():
+                transition_of_coords_per_100steps.append(graph.pos)
+                transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
+                transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
+                num_of_generated_coords += 1
+                seed_value += 1
+                
+                original_coords_list.append(-1)
+                generated_coords_list.append(transition_of_coords_per_100steps)
+                print('successfully generated',num_of_generated_coords)
+        np.savez('abinitio_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+"""
     for data in test_data:
         if data.spectrum.shape[0] != 3:
             continue
@@ -207,14 +340,18 @@ if __name__ == '__main__':
             egnn.eval()
             with torch.no_grad():
                 for time in list(range(num_diffusion_timestep,0,-1)):
-                    """
+                    
                     if time%100 == 0:
                         print('coords at time',time,':',graph.pos)
-                    """
+                    
                 
                     time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
                     if conditional:
-                        graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
+                        if to_compress_spectrum:
+                            compressed_spectrum = spectrum_compressor(graph.spectrum)
+                            graph.h = torch.cat((onehot_scaling_factor*graph.x,compressed_spectrum,time_tensor),dim=1)
+                        else:
+                            graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
                     else:
                         graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
                     if params['diffusion_process'] == 'GeoDiff':
@@ -225,7 +362,7 @@ if __name__ == '__main__':
                         graph.node = graph.pos
                     elif params['diffusion_process'] == 'E3':
                         new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
-                        """
+                        
                         if time in record_time:
                             if record_mode == 'individual':
                                 os.makedirs('/home/rokubo/data/diffusion_model/test_vesta/individual/'+str(data.id)+'_'+model_path,exist_ok=True)
@@ -237,7 +374,7 @@ if __name__ == '__main__':
                                 write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
                             else:
                                 write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=None,mode=record_mode)
-                        """
+                        
                         #print('time:',time)
                         #print('new_x:',new_x)
                         #print('graph.pos:',graph.pos)
@@ -246,11 +383,11 @@ if __name__ == '__main__':
                         mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
                         graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
 
-                    """
+                    
                     if time%100 == 0:
                         print('graph.pos',graph.pos)
                         print('epsilon:',epsilon)
-                    """
+                    
                     if not torch.isfinite(graph.pos).all():
                         #raise ValueError('nan')
                         print('nan')
@@ -266,7 +403,7 @@ if __name__ == '__main__':
                     original_coords_list.append(-1)
                 generated_coords_list.append(graph.pos)
                 print('successfully generated',num_of_generated_coords)
-                """
+                
                 if record_mode == 'individual':
                     save_name = str(data.id)+'_'+model_path + '/' + str(data.id) + '_0'
                 elif record_mode == 'seed_dependence':
@@ -275,8 +412,8 @@ if __name__ == '__main__':
                     write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
                 else:
                     write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=None,mode=record_mode)
-                """
-            """
+                
+            
             print('graph.id:',data.id)
             print('coords at time 0:',graph.pos)
             print(data.pos)
@@ -289,11 +426,11 @@ if __name__ == '__main__':
                 write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=data.pos,mode=record_mode)
             else:
                 write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=None,mode=record_mode)        
-            """
+            
     if conditional:
         for_name = 'conditional'
     else:
         for_name = 'abinitio'
     np.savez(for_name+'_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
-
+"""
 
