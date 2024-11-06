@@ -17,7 +17,7 @@ from torch.optim.lr_scheduler import StepLR
 #from E3diffusion import E3DiffusionProcess, remove_mean
 from E3diffusion_new import E3DiffusionProcess, remove_mean
 from CN2_evaluate import calculate_angle_for_CN2
-
+from DataPreprocessor import SpectrumCompressor
 import wandb
 
 class EarlyStopping():
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='resized_spectrum_-1_9',config=params,name='conditional dataset only CN2 except 180')
+    wandb.init(project='resized_spectrum',config=params,name='conditional dataset only CN2 except 180')
     
     seed = params['seed']
     random.seed(seed)
@@ -103,6 +103,9 @@ if __name__ == "__main__":
 
     epsilon_prediction = params['epsilon_prediction']
 
+    compressed_spectrum_dim = params['compressed_spectrum_dim']
+    compressor_hidden_dim = params['compressor_hidden_dim']
+
     
     early_stopping = EarlyStopping(patience=params['patience'])
     message_passing = MessagePassing(aggr='sum',flow='target_to_source')
@@ -135,8 +138,7 @@ if __name__ == "__main__":
         egnn = EGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
     elif epsilon_prediction == 'E3':
         egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    
-
+    spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_dim)
     optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
     
 

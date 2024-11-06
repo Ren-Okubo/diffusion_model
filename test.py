@@ -21,6 +21,7 @@ from torch.optim.lr_scheduler import StepLR
 from E3diffusion_new import E3DiffusionProcess, remove_mean
 from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 from CN2_evaluate import calculate_angle_for_CN2
+from PIL import Image, ImageFilter
 
 def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
     if mode == 'individual':
@@ -122,7 +123,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202410181216'
+    model_path = 'egnn_202410311038'
 
     checkpoint = torch.load('/home/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth')
 
@@ -132,6 +133,7 @@ if __name__ == '__main__':
 
     data = np.load("/home/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
+    dataset = setupdata.resize_spectrum(dataset,resize=spectrum_size)
 
     dataset_only_CN2 = []
     for i in range(len(dataset)):
@@ -166,7 +168,11 @@ if __name__ == '__main__':
 
         seed_value = 0
         num_of_generated_coords = 0
-        while num_of_generated_coords != 10:
+        if conditional:
+            how_many_gen = 10
+        else:
+            how_many_gen = 1000
+        while num_of_generated_coords != how_many_gen:
             
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
@@ -284,6 +290,10 @@ if __name__ == '__main__':
             else:
                 write_xyz_for_prediction_only_si(save_name,generated_coords=graph.pos,original_coords=None,mode=record_mode)        
             """
-    np.savez('abinitio_gen_by_dataset_only_CN2_including_180_10161508.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+    if conditional:
+        for_name = 'conditional'
+    else:
+        for_name = 'abinitio'
+    np.savez(for_name+'_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
 
