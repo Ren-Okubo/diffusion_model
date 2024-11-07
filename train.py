@@ -35,6 +35,8 @@ class EarlyStopping():
         return False
 
 if __name__ == "__main__":
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"device: {device}")
     with open('parameters.yaml','r') as file:
         params = yaml.safe_load(file)
 
@@ -51,6 +53,7 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
 
     num_diffusion_timestep = params['num_diffusion_timestep']
+    noise_precision = params['noise_precision']   
     num_epochs = params['num_epochs']
     diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
     batch_size = params['batch_size']
@@ -91,6 +94,7 @@ if __name__ == "__main__":
 
 
 
+
     to_compress_spectrum = params['to_compress_spectrum']
     compressed_spectrum_size = params['compressed_spectrum_size']
     compressor_hidden_dim = params['compressor_hidden_dim']
@@ -123,7 +127,7 @@ if __name__ == "__main__":
 
     #train
     if to_compress_spectrum:
-        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size).to(device)
         h_size = compressed_spectrum_size + atom_type_size + t_size
         m_input_size = h_size + h_size + d_size
         h_input_size = h_size + m_size
@@ -131,7 +135,7 @@ if __name__ == "__main__":
         x_input_size = h_size + h_size + d_size
 
 
-    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
+    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size).to(device)
     
     optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
     
@@ -148,6 +152,7 @@ if __name__ == "__main__":
         total_num_val_node = 0
         
         for train_graph in train_loader:
+            train_graph = train_graph.to(device)
             optimizer.zero_grad()
             num_graph = train_graph.batch.max().item()+1
             total_num_train_node += train_graph.num_nodes
@@ -175,14 +180,14 @@ if __name__ == "__main__":
                 diffused_pos.append(pos_after_diffusion)
                 y.append(noise)
 
-            diffused_pos = torch.cat(diffused_pos,dim=0)
-            h = torch.cat(h_list,dim=0)
-            y = torch.cat(y,dim=0)
+            diffused_pos = torch.cat(diffused_pos,dim=0).to(device)
+            h = torch.cat(h_list,dim=0).to(device)
+            y = torch.cat(y,dim=0).to(device)
             train_graph.diffused_coords = diffused_pos
             train_graph.h = h
             train_graph.y = y
             train_graph.pos = diffused_pos
-            train_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
+            train_graph.time = torch.tensor(attr_time_list,dtype=torch.long).to(device)
             
 
             h, x = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords)
@@ -204,6 +209,7 @@ if __name__ == "__main__":
         
         with torch.no_grad():
             for val_graph in val_loader:
+                val_graph = val_graph.to(device)
                 optimizer.zero_grad()
                 num_graph = val_graph.batch.max().item()+1
                 total_num_val_node += val_graph.num_nodes
@@ -231,14 +237,14 @@ if __name__ == "__main__":
                     diffused_pos.append(pos_after_diffusion)
                     y.append(noise)
 
-                diffused_pos = torch.cat(diffused_pos,dim=0)
-                h = torch.cat(h_list,dim=0)
-                y = torch.cat(y,dim=0)
+                diffused_pos = torch.cat(diffused_pos,dim=0).to(device)
+                h = torch.cat(h_list,dim=0).to(device)
+                y = torch.cat(y,dim=0).to(device)
                 val_graph.diffused_coords = diffused_pos
                 val_graph.h = h
                 val_graph.y = y
                 val_graph.pos = diffused_pos
-                val_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
+                val_graph.time = torch.tensor(attr_time_list,dtype=torch.long).to(device)
                 
 
 

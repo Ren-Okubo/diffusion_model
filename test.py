@@ -52,6 +52,8 @@ def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,ori
                     f.write('Si '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
 
 if __name__ == '__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('device:',device)
     with open('parameters.yaml','r') as file:
         params = yaml.safe_load(file)
     
@@ -105,8 +107,10 @@ if __name__ == '__main__':
     compressed_spectrum_size = params['compressed_spectrum_size']
     compressor_hidden_dim = params['compressor_hidden_dim']
 
+    noise_precision = params['noise_precision']
+
     if to_compress_spectrum:
-        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size).to(device)
         h_size = compressed_spectrum_size + atom_type_size + t_size
         m_input_size = h_size + h_size + d_size
         h_input_size = h_size + m_size
@@ -114,7 +118,7 @@ if __name__ == '__main__':
         x_input_size = h_size + h_size + d_size
 
 
-    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
+    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size).to(device)
 
     diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
     
@@ -122,9 +126,9 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202411061556'
+    model_path = 'egnn_202411061724'
 
-    state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth')
+    state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
     if to_compress_spectrum:
         spectrum_compressor.load_state_dict(state_dicts['spectrum_compressor'])
@@ -180,14 +184,14 @@ if __name__ == '__main__':
                     for j in range(num_atom):
                         if i != j:
                             edge_index.append([i, j])
-                initial_coords = torch.zeros(size=(num_atom,3))
+                initial_coords = torch.zeros(size=(num_atom,3)).to(device)
                 initial_coords.normal_()
                 initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
                 atom_type = [[1,0]]
                 for i in range(num_atom-1):
                     atom_type.append([0,1])
-                x = torch.tensor(atom_type,dtype=torch.float32)
-                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords,spectrum=data.spectrum)#
+                x = torch.tensor(atom_type,dtype=torch.float32).to(device)
+                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=data.spectrum.to(device))#
 
                 graph.node = graph.pos
 
@@ -199,12 +203,13 @@ if __name__ == '__main__':
                         if time%100 == 0:
                             transition_of_coords_per_100steps.append(graph.pos)
                         
-                        time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
+                        time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32).to(device)
                         if to_compress_spectrum:
                             compressed_spectrum = spectrum_compressor(graph.spectrum)
                             graph.h = torch.cat((onehot_scaling_factor*graph.x,compressed_spectrum,time_tensor),dim=1)
                         else:
-                            graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
+                            graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
+                        
 
                         new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
                         epsilon = remove_mean(new_x - graph.pos)
@@ -248,14 +253,14 @@ if __name__ == '__main__':
                 for j in range(num_atom):
                     if i != j:
                         edge_index.append([i, j])
-            initial_coords = torch.zeros(size=(num_atom,3))
+            initial_coords = torch.zeros(size=(num_atom,3)).to(device)
             initial_coords.normal_()
             initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
             atom_type = [[1,0]]
             for i in range(num_atom-1):
                 atom_type.append([0,1])
             x = torch.tensor(atom_type,dtype=torch.float32)
-            graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords)
+            graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords)
             graph.node = graph.pos
 
 
@@ -266,7 +271,7 @@ if __name__ == '__main__':
                     if time%100 == 0:
                         transition_of_coords_per_100steps.append(graph.pos)
                     
-                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
+                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32).to(device)
                     graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
                     new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
                     epsilon = remove_mean(new_x - graph.pos)
