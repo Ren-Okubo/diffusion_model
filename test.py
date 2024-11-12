@@ -108,6 +108,8 @@ if __name__ == '__main__':
     compressor_hidden_dim = params['compressor_hidden_dim']
 
     noise_precision = params['noise_precision']
+    power = params['noise_schedule_power']
+
 
     if to_compress_spectrum:
         spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size).to(device)
@@ -120,13 +122,13 @@ if __name__ == '__main__':
 
     egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size).to(device)
 
-    diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
+    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep)
     
 
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202411061724'
+    model_path = 'egnn_202411121136'
 
     state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
@@ -224,6 +226,7 @@ if __name__ == '__main__':
                 if torch.isfinite(graph.pos).all():
                     transition_of_coords_per_100steps.append(graph.pos)
                     transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
+                    transition_of_coords_per_100steps = [coords.cpu().numpy() for coords in transition_of_coords_per_100steps]
                     transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
                     num_of_generated_coords += 1
                     seed_value += 1
@@ -287,6 +290,7 @@ if __name__ == '__main__':
             if torch.isfinite(graph.pos).all():
                 transition_of_coords_per_100steps.append(graph.pos)
                 transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
+                transition_of_coords_per_100steps = [coords.cpu().numpy() for coords in transition_of_coords_per_100steps]
                 transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
                 num_of_generated_coords += 1
                 seed_value += 1

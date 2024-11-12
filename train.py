@@ -53,9 +53,10 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
 
     num_diffusion_timestep = params['num_diffusion_timestep']
-    noise_precision = params['noise_precision']   
+    noise_precision = params['noise_precision']
+    power = params['noise_schedule_power']
     num_epochs = params['num_epochs']
-    diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
+    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep)
     batch_size = params['batch_size']
 
     conditional = params['conditional']
@@ -166,9 +167,9 @@ if __name__ == "__main__":
                 x_per_graph = train_graph.x[train_graph.batch == graph_index]
                 time = random.choice(time_list)
                 attr_time_list += [time for j in range(x_per_graph.shape[0])]
-                time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32).to(device)
                 if conditional:
-                    spectrum_per_graph = train_graph.spectrum[train_graph.batch == graph_index]
+                    spectrum_per_graph = train_graph.spectrum[train_graph.batch == graph_index].to(device)
                     if to_compress_spectrum:
                         spectrum_per_graph = spectrum_compressor(spectrum_per_graph)
                     h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
@@ -223,9 +224,9 @@ if __name__ == "__main__":
                     x_per_graph = val_graph.x[val_graph.batch == graph_index]
                     time = random.choice(time_list)
                     attr_time_list += [time for j in range(x_per_graph.shape[0])]
-                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32).to(device)
                     if conditional:
-                        spectrum_per_graph = val_graph.spectrum[val_graph.batch == graph_index]
+                        spectrum_per_graph = val_graph.spectrum[val_graph.batch == graph_index].to(device)
                         if to_compress_spectrum:
                             spectrum_per_graph = spectrum_compressor(spectrum_per_graph)
                         h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
