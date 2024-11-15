@@ -167,6 +167,7 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
                 else:
                     h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,time_tensor),dim=1) 
                 h_list.append(h_per_graph)
+                
 
                 pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
                 diffused_pos.append(pos_after_diffusion)

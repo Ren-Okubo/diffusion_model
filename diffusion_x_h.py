@@ -13,54 +13,43 @@ def remove_mean(x:torch.tensor,batch_index=None):
     return x
 
 class E3DiffusionProcess():
-    def __init__(self,s,power,num_diffusion_timestep:int):
+    def __init__(self,s,num_diffusion_timestep:int):
         self.noise_precision = s
         self.num_diffusion_timestep = num_diffusion_timestep
         self.t = torch.linspace(0,num_diffusion_timestep,num_diffusion_timestep+1) #０からnum_diffusion_timestepまでの5001個の整数
-        #self.alpha_schedule1 = (1-2*s) * (1-(self.t / num_diffusion_timestep)**2) + s
-        #self.sigma_schedule1 = torch.sqrt(1-self.alpha_schedule1**2)
-        self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=power)
+        self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=2.)
         self.sigma_schedule = torch.sqrt(1-self.alpha_schedule**2)
         
-        """
-        print(self.alpha_schedule)
-        print(self.t)
-        
-        assert torch.equal(self.alpha_schedule1,self.alpha_schedule), 'alpha_schedule1 is not equal to alpha_schedule'
-        assert torch.equal(self.sigma_schedule1,self.sigma_schedule), 'sigma_schedule1 is not equal to sigma_schedule'
-        pdb.set_trace()
-        """
 
-    def diffuse_zero_to_t(self,pos:torch.tensor,t:int):
-        noise = torch.zeros_like(pos)
-        noise.normal_(mean=0,std=1)
-        noise = remove_mean(noise)
-        pos_after_diffuse = self.alpha_schedule[t] * pos + self.sigma_schedule[t] * noise
-        return pos_after_diffuse , noise
+
+    def diffuse_zero_to_t(self,pos:torch.tensor,h:torch.tensort:int):
+        noise_x = torch.zeros_like(pos).to(pos.device)
+        noise_h = torch.zeros_like(h).to(h.device)
+        noise_x.normal_(mean=0,std=1)
+        noise_h.normal_(mean=0,std=1)
+        noise_x = remove_mean(noise_x)
+        noise_z = torch.cat((noise_x,noise_h),dim=1)
+        z_after_diffuse = self.alpha_schedule[t] * torch.cat((pos,h),dim=1) + self.sigma_schedule[t] * noise_z
+        pos_after_diffuse = z_after_diffuse[:,:pos.size(1)]
+        h_after_diffuse = z_after_diffuse[:,pos.size(1):]
+        return pos_after_diffuse, h_after_diffuse, noise_x, noise_h
     
-    def calculate_mu(self,pos:torch.tensor,epsilon:torch.tensor,t:int):
+    def calculate_mu(self,pos:torch.tensor,h:torch.tensor,epsilon:torch.tensor,t:int):
+        z = torch.cat((pos,h),dim=1)
         alpha_t = self.alpha_schedule[t]
-        """
-        print('t:',self.t[5000])
-        print('alpha_t:',alpha_t)
-        print('sigma_t:',self.sigma_schedule[t])
-        print('alpha_schedule:',self.alpha_schedule)
-        print('sigma_schedule:',self.sigma_schedule)
-        """
         alpha_s = self.alpha_schedule[t-1]
         squared_sigma_t = 1 - alpha_t**2
+        sigma_t = torch.sqrt(squared_sigma_t)
         squared_sigma_s = 1 - alpha_s**2
+        sigma_s = torch.sqrt(squared_sigma_s)
         alpha_ts = alpha_t / alpha_s
         squared_sigma_ts = squared_sigma_t - torch.pow(alpha_ts,2) * squared_sigma_s
-        x_hat = (pos - self.sigma_schedule[t] * epsilon) / alpha_t
-        """
-        print('x_hat:',x_hat)
-        print(alpha_s*squared_sigma_ts/squared_sigma_t)
-        """
-        mu = alpha_ts * squared_sigma_s * pos / squared_sigma_t + alpha_s * squared_sigma_ts * x_hat / squared_sigma_t
+
+        mu = z / alpha_ts - squared_sigma_ts * epsilon / alpha_ts / sigma_t
         return mu
     
-    def reverse_diffuse_one_step(self,mu,t:int):
+    def reverse_diffuse_one_step(self,pos:torch.tensor,h:torch.tensor,epsilon:torch.tensor,t:int):
+        mu = self.calculate_mu(pos,h,epsilon,t)
         alpha_t = self.alpha_schedule[t]
         alpha_s = self.alpha_schedule[t-1]
         squared_sigma_t = 1 - alpha_t**2
@@ -68,12 +57,15 @@ class E3DiffusionProcess():
         alpha_ts = alpha_t / alpha_s
         squared_sigma_ts = squared_sigma_t - torch.pow(alpha_ts,2) * squared_sigma_s
         std = torch.sqrt(squared_sigma_ts * squared_sigma_s / squared_sigma_t)
-        noise = torch.zeros_like(mu)
-        noise.normal_(mean=0,std=1)
-        noise = remove_mean(noise)
-        #print('mu:',mu)
-        pos = mu + std * noise
-        return pos
+        noise_x = torch.zeros_like(pos).to(pos.device)
+        noise_h = torch.zeros_like(h).to(h.device)
+        noise_x.normal_(mean=0,std=1)
+        noise_x = remove_mean(noise_x)
+        noise = torch.cat((noise_x,noise_h),dim=1)
+        z = mu + std * noise
+        x = z[:,:pos.size(1)]
+        h = z[:,pos.size(1):]
+        return x, h
 
     def clip_noise_schedule(self,alphas2,clip_value=0.001):
         alphas2 = torch.cat([torch.ones(1),alphas2],dim=0)

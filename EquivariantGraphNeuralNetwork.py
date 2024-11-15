@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 
+
 class EGCL(MessagePassing):
     def __init__(self,m_input,m_hidden,m_output,
                  x_input,x_hidden,x_output,

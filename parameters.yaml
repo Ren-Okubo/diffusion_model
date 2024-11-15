@@ -1,26 +1,29 @@
-L: 5
-aligned_standard: CoM
+L: 7
 atom_type_size: 2
 batch_size: 32
+compressed_spectrum_size: 32
+compressor_hidden_dim:
+- 50
 conditional: true
 d_size: 1
-diffusion_process: E3
-epsilon_prediction: E3
-h_hidden_size: 128
-initial_atom_num_prediction: CN
+h_hidden_size:
+- 128
 lr: 0.0001
-m_hidden_size: 128
-m_size: 256
+m_hidden_size:
+- 128
+m_size: 128
 max_grad_norm: 100
-mlp_x_input: E3
-noise_precision: 1.0e-05
-num_diffusion_timestep: 5000
+noise_precision: 0.001
+noise_schedule_power : 2.0
+num_diffusion_timestep: 3000
 num_epochs: 3000
-patience: 500
+onehot_scaling_factor: 1.0
+patience: 100
 seed: 2024
-spectrum_size: 200
+spectrum_size: 100
 t_size: 1
+to_compress_spectrum: true
 weight_decay: 0
-x_equation: E3
-x_hidden_size: 128
+x_hidden_size:
+- 128
 x_size: 3

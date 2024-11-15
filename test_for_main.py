@@ -217,8 +217,6 @@ def test_for_main(parameters_yaml_file:str, model_state_name:str, result_save_na
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
             random.seed(seed_value)
-            #data = train_data[913]
-            #data = test_data[9]  #
             num_atom = data.spectrum.shape[0] #
 
 
