@@ -154,19 +154,23 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
             h_list = []
             y = []
             attr_time_list = []
+            each_time_list = []
             for i in range(num_graph):
                 graph_index = i
                 pos_to_diffuse = train_graph.pos[train_graph.batch == graph_index]
                 x_per_graph = train_graph.x[train_graph.batch == graph_index]
+
+                h_to_diffuse = 
+
+                
                 time = random.choice(time_list)
                 attr_time_list += [time for j in range(x_per_graph.shape[0])]
                 time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
                 if conditional:
                     spectrum_per_graph = train_graph.spectrum[train_graph.batch == graph_index]
-                    h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
-                else:
-                    h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,time_tensor),dim=1) 
+                    h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph),dim=1)
                 h_list.append(h_per_graph)
+                each_time_list.append(time_tensor)
                 
 
                 pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
@@ -174,6 +178,7 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
                 y.append(noise)
 
             diffused_pos = torch.cat(diffused_pos,dim=0)
+            each_time_in_batch = torch.cat(each_time_list,dim=0)
             h = torch.cat(h_list,dim=0)
             y = torch.cat(y,dim=0)
             train_graph.diffused_coords = diffused_pos

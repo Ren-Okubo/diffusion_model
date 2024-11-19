@@ -190,9 +190,12 @@ def test_for_main(parameters_yaml_file:str, model_state_name:str, result_save_na
 
                         new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
 
-                        epsilon = remove_mean(new_x - graph.pos)
-                        mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
+                        epsilon_x = remove_mean(new_x - graph.pos)
+                        epsilon_h = new_h
+                        mu_x = diffusion_process.calculate_mu(graph.pos,epsilon_x,time)
+                        mu_h = diffusion_process.calculate_mu(graph.h,epsilon_h,time)
                         graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
+                        graph.h = #reverse_diffuseによるhの更新
 
                         if not torch.isfinite(graph.pos).all():
                             #raise ValueError('nan')

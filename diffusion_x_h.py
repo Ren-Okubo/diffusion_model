@@ -34,8 +34,7 @@ class E3DiffusionProcess():
         h_after_diffuse = z_after_diffuse[:,pos.size(1):]
         return pos_after_diffuse, h_after_diffuse, noise_x, noise_h
     
-    def calculate_mu(self,pos:torch.tensor,h:torch.tensor,epsilon:torch.tensor,t:int):
-        z = torch.cat((pos,h),dim=1)
+    def calculate_mu(self,z:torch.tensor,epsilon:torch.tensor,t:int):
         alpha_t = self.alpha_schedule[t]
         alpha_s = self.alpha_schedule[t-1]
         squared_sigma_t = 1 - alpha_t**2
@@ -48,8 +47,8 @@ class E3DiffusionProcess():
         mu = z / alpha_ts - squared_sigma_ts * epsilon / alpha_ts / sigma_t
         return mu
     
-    def reverse_diffuse_one_step(self,pos:torch.tensor,h:torch.tensor,epsilon:torch.tensor,t:int):
-        mu = self.calculate_mu(pos,h,epsilon,t)
+    def reverse_diffuse_one_step(self,z,epsilon:torch.tensor,t:int,mode='x'):
+        mu = self.calculate_mu(z,epsilon,t)
         alpha_t = self.alpha_schedule[t]
         alpha_s = self.alpha_schedule[t-1]
         squared_sigma_t = 1 - alpha_t**2
@@ -57,15 +56,12 @@ class E3DiffusionProcess():
         alpha_ts = alpha_t / alpha_s
         squared_sigma_ts = squared_sigma_t - torch.pow(alpha_ts,2) * squared_sigma_s
         std = torch.sqrt(squared_sigma_ts * squared_sigma_s / squared_sigma_t)
-        noise_x = torch.zeros_like(pos).to(pos.device)
-        noise_h = torch.zeros_like(h).to(h.device)
-        noise_x.normal_(mean=0,std=1)
-        noise_x = remove_mean(noise_x)
-        noise = torch.cat((noise_x,noise_h),dim=1)
+        noise = torch.zeros_like(z).to(z.device)
+        noise.normal_(mean=0,std=1)
+        if mode =='x':
+            noise = remove_mean(noise)
         z = mu + std * noise
-        x = z[:,:pos.size(1)]
-        h = z[:,pos.size(1):]
-        return x, h
+        return z
 
     def clip_noise_schedule(self,alphas2,clip_value=0.001):
         alphas2 = torch.cat([torch.ones(1),alphas2],dim=0)
