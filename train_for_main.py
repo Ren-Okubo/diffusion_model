@@ -129,15 +129,26 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
 
     #train
 
+    if to_compress_spectrum:
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size).to(device)
+        h_size = compressed_spectrum_size + atom_type_size + t_size
+        m_input_size = h_size + h_size + d_size
+        h_input_size = h_size + m_size
+        h_output_size = h_size
+        x_input_size = h_size + h_size + d_size        
 
     egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_dim)
     optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
     
 
     criterion = nn.MSELoss(reduction='sum')
 
     epoch_list, loss_list_train, loss_list_val = [], [], []
+
+    if torch.cuda.is_available():
+        torch.set_default_tensor_type(torch.cuda.FloatTensor)
+    else:
+        torch.set_default_tensor_type(torch.FloatTensor)
 
     for epoch in range(num_epochs):
         egnn.train()
@@ -150,50 +161,66 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
             optimizer.zero_grad()
             num_graph = train_graph.batch.max().item()+1
             total_num_train_node += train_graph.num_nodes
-            diffused_pos = []
-            h_list = []
-            y = []
+            pos_before_diffusion, h_before_diffusion = [], []
+            diffused_pos, diffused_h = [], []
+            y_for_noise_pos,y_for_noise_h = [], []            
             attr_time_list = []
             each_time_list = []
             for i in range(num_graph):
                 graph_index = i
+                #バッチ内のグラフごとに処理
                 pos_to_diffuse = train_graph.pos[train_graph.batch == graph_index]
                 x_per_graph = train_graph.x[train_graph.batch == graph_index]
-
-                h_to_diffuse = 
-
-                
-                time = random.choice(time_list)
-                attr_time_list += [time for j in range(x_per_graph.shape[0])]
-                time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                #conditionalの場合は特徴量ベクトルにスペクトルベクトルを連結
                 if conditional:
                     spectrum_per_graph = train_graph.spectrum[train_graph.batch == graph_index]
-                    h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph),dim=1)
-                h_list.append(h_per_graph)
-                each_time_list.append(time_tensor)
+                    h_to_diffuse = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph),dim=1)
+                else:
+                    h_to_diffuse = onehot_scaling_factor*x_per_graph
+                
+                time = random.choice(time_list)
+                #time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                
+                pos_after_diffusion, noise_pos = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                h_after_diffusion , noise_h = diffusion_process.diffusion_zero_to_t(h_to_diffuse,time,mode='h')
                 
 
-                pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
                 diffused_pos.append(pos_after_diffusion)
-                y.append(noise)
+                diffused_h.append(h_after_diffusion)
+                pos_before_diffusion.append(pos_to_diffuse)
+                h_before_diffusion.append(h_to_diffuse)
+                each_time_list += [time for j in range(x_per_graph.shape[0])]
+                #each_time_list.append(time_tensor)                
+                y_for_noise_pos.append(noise_pos)
+                y_for_noise_h.append(noise_h)
+
 
             diffused_pos = torch.cat(diffused_pos,dim=0)
+            diffuse_h = torch.cat(diffused_h,dim=0)
             each_time_in_batch = torch.cat(each_time_list,dim=0)
-            h = torch.cat(h_list,dim=0)
-            y = torch.cat(y,dim=0)
-            train_graph.diffused_coords = diffused_pos
-            train_graph.h = h
-            train_graph.y = y
-            train_graph.pos = diffused_pos
-            train_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
+            y_for_pos = torch.cat(y_for_noise_pos,dim=0)
+            y_for_h = torch.cat(y_for_noise_h,dim=0)
+
+            train_graph.diffused_pos = diffused_pos
+            train_graph.diffused_h = diffused_h
+
+            train_graph.pos = pos_before_diffusion
+            train_graph.h = h_before_diffusion
+            train_graph.y_for_pos = y_for_pos
+            train_graph.y_for_h = y_for_h
+            train_graph.time = torch.tensor(each_time_list,dtype=torch.long)
             
-            h, x = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords)
-            epsilon = x - train_graph.diffused_coords
-            epsilon = remove_mean(epsilon,batch_index=train_graph.batch)
+            h, x = egnn(train_graph.edge_index,torch.cat((train_graph.diffused_h,(train_graph.time/num_diffusion_timestep)),dim=1),train_graph.diffused_pos)
+            epsilon_x = x - train_graph.diffused_pos
+            epsilon_x = remove_mean(epsilon_x,batch_index=train_graph.batch)
+            epsilon_h = h
+
+            predicted_epsilon = torch.cat((epsilon_x,epsilon_h),dim=1)
+            target_epsilon = torch.cat((train_graph.y_for_pos,train_graph.y_for_h),dim=1)
 
 
             #print('epsilon : ',epsilon)
-            loss = criterion(epsilon,train_graph.y)
+            loss = criterion(predicted_epsilon,target_epsilon)
             loss = loss / num_graph
             loss.backward()
             #torch.nn.utils.clip_grad_norm_(model_x.parameters(), max_grad_norm)
@@ -210,44 +237,74 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
                 optimizer.zero_grad()
                 num_graph = val_graph.batch.max().item()+1
                 total_num_val_node += val_graph.num_nodes
-                diffused_pos = []
-                h_list = []
-                y = []
+                pos_before_diffusion, h_before_diffusion = [], []
+                diffused_pos, diffused_h = [], []
+                y_for_noise_pos,y_for_noise_h = [], []            
                 attr_time_list = []
+                each_time_list = []
                 for i in range(num_graph):
                     graph_index = i
+                    #バッチ内のグラフごとに処理
                     pos_to_diffuse = val_graph.pos[val_graph.batch == graph_index]
                     x_per_graph = val_graph.x[val_graph.batch == graph_index]
-                    time = random.choice(time_list)
-                    attr_time_list += [time for j in range(x_per_graph.shape[0])]
-                    time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                    #conditionalの場合は特徴量ベクトルにスペクトルベクトルを連結
                     if conditional:
                         spectrum_per_graph = val_graph.spectrum[val_graph.batch == graph_index]
-                        h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph,time_tensor),dim=1)
+                        h_to_diffuse = torch.cat((onehot_scaling_factor*x_per_graph,spectrum_per_graph),dim=1)
                     else:
-                        h_per_graph = torch.cat((onehot_scaling_factor*x_per_graph,time_tensor),dim=1) 
-                    h_list.append(h_per_graph)
+                        h_to_diffuse = onehot_scaling_factor*x_per_graph
+                    
+                    time = random.choice(time_list)
+                    #time_tensor = torch.tensor([[time/num_diffusion_timestep] for j in range(x_per_graph.shape[0])],dtype=torch.float32)
+                    
+                    pos_after_diffusion, noise_pos = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
+                    h_after_diffusion , noise_h = diffusion_process.diffusion_zero_to_t(h_to_diffuse,time,mode='h')
+                    
 
-                    pos_after_diffusion, noise = diffusion_process.diffuse_zero_to_t(pos_to_diffuse,time)
                     diffused_pos.append(pos_after_diffusion)
-                    y.append(noise)
+                    diffused_h.append(h_after_diffusion)
+                    pos_before_diffusion.append(pos_to_diffuse)
+                    h_before_diffusion.append(h_to_diffuse)
+                    each_time_list += [time for j in range(x_per_graph.shape[0])]
+                    #each_time_list.append(time_tensor)                
+                    y_for_noise_pos.append(noise_pos)
+                    y_for_noise_h.append(noise_h)
+
 
                 diffused_pos = torch.cat(diffused_pos,dim=0)
-                h = torch.cat(h_list,dim=0)
-                y = torch.cat(y,dim=0)
-                val_graph.diffused_coords = diffused_pos
-                val_graph.h = h
-                val_graph.y = y
-                val_graph.pos = diffused_pos
-                val_graph.time = torch.tensor(attr_time_list,dtype=torch.long)
+                diffuse_h = torch.cat(diffused_h,dim=0)
+                each_time_in_batch = torch.cat(each_time_list,dim=0)
+                y_for_pos = torch.cat(y_for_noise_pos,dim=0)
+                y_for_h = torch.cat(y_for_noise_h,dim=0)
+
+                val_graph.diffused_pos = diffused_pos
+                val_graph.diffused_h = diffused_h
+
+                val_graph.pos = pos_before_diffusion
+                val_graph.h = h_before_diffusion
+                val_graph.y_for_pos = y_for_pos
+                val_graph.y_for_h = y_for_h
+                val_graph.time = torch.tensor(each_time_list,dtype=torch.long)
                 
+                h, x = egnn(val_graph.edge_index,torch.cat((val_graph.diffused_h,(val_graph.time/num_diffusion_timestep)),dim=1),val_graph.diffused_pos)
+                epsilon_x = x - val_graph.diffused_pos
+                epsilon_x = remove_mean(epsilon_x,batch_index=val_graph.batch)
+                epsilon_h = h
 
-                h, x = egnn(val_graph.edge_index,val_graph.h,val_graph.diffused_coords)
-                epsilon = x - val_graph.diffused_coords
-                epsilon = remove_mean(epsilon,batch_index=val_graph.batch)
+                predicted_epsilon = torch.cat((epsilon_x,epsilon_h),dim=1)
+                target_epsilon = torch.cat((val_graph.y_for_pos,val_graph.y_for_h),dim=1)
 
-                loss = criterion(epsilon,val_graph.y)
+
+                #print('epsilon : ',epsilon)
+                loss = criterion(predicted_epsilon,target_epsilon)
+                loss = loss / num_graph
+                loss.backward()
+                #torch.nn.utils.clip_grad_norm_(model_x.parameters(), max_grad_norm)
+                #torch.nn.utils.clip_grad_norm_(model_h.parameters(), max_grad_norm)
+                optimizer.step()
+                loss = loss * num_graph
                 epoch_loss_val += loss.item()
+
         avg_loss_val = epoch_loss_val / total_num_val_node
         avg_loss_train = epoch_loss_train / total_num_train_node
 
@@ -261,12 +318,17 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
             break
     
 
-    model_states = egnn.state_dict()
     model_state_name = now.strftime("%Y%m%d%H%M")
-    model_state_save_name = "./model_state/model_to_predict_epsilon/egnn_"+model_state_name+".pth
+    model_state1 = egnn.state_dict()
+    if to_compress_spectrum:
+        model_state2 = spectrum_compressor.state_dict()
+        model_states = {'egnn':model_state1,'spectrum_compressor':model_state2}
+    else:
+        model_states = {'egnn':model_state1}
+    torch.save(model_states,"./model_state/model_to_predict_epsilon/egnn_"+model_state_name+".pth")
 
-    torch.save(model_states,model_state_save_name)
 
+    run.name = 'egnn_'+model_state_name
     run_id = wandb.run.id
     run.finish()
     

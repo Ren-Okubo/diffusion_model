@@ -22,17 +22,13 @@ class E3DiffusionProcess():
         
 
 
-    def diffuse_zero_to_t(self,pos:torch.tensor,h:torch.tensort:int):
-        noise_x = torch.zeros_like(pos).to(pos.device)
-        noise_h = torch.zeros_like(h).to(h.device)
-        noise_x.normal_(mean=0,std=1)
-        noise_h.normal_(mean=0,std=1)
-        noise_x = remove_mean(noise_x)
-        noise_z = torch.cat((noise_x,noise_h),dim=1)
-        z_after_diffuse = self.alpha_schedule[t] * torch.cat((pos,h),dim=1) + self.sigma_schedule[t] * noise_z
-        pos_after_diffuse = z_after_diffuse[:,:pos.size(1)]
-        h_after_diffuse = z_after_diffuse[:,pos.size(1):]
-        return pos_after_diffuse, h_after_diffuse, noise_x, noise_h
+    def diffuse_zero_to_t(self,z:torch.tensor,t:int,mode='pos'):
+        noise = torch.zeros_like(z).to(z.device)        
+        noise.normal_(mean=0,std=1)
+        if mode == 'pos':
+            noise = remove_mean(noise)
+        z_after_diffuse = self.alpha_schedule[t] * z + self.sigma_schedule[t] * noise
+        return z_after_diffuse, noise
     
     def calculate_mu(self,z:torch.tensor,epsilon:torch.tensor,t:int):
         alpha_t = self.alpha_schedule[t]

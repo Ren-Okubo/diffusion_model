@@ -7,4 +7,7 @@ if __name__ == '__main__':
     else:
         run_id, model_state_name = train_for_main.train_for_main()
         
+    #datasetの分割
+    #train
+    #test
     

@@ -18,39 +18,37 @@ from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 from CN2_evaluate import calculate_angle_for_CN2
 from PIL import Image, ImageFilter
 
-
+def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
+    if mode == 'individual':
+        file_name = '/home/rokubo/data/diffusion_model/test_vesta/individual/' + str(save_name) + '.xyz'
+    elif mode == 'seed_dependence':
+        file_name = '/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/' + str(save_name) + '.xyz'
+    N = generated_coords.shape[0]
+    if original_coords is not None:
+        with open(file_name,'w') as f:
+            f.write(str(N*2)+'\n')
+            f.write('\n')
+            for i in range(N):
+                if i == 0:
+                    f.write('F '+str(original_coords[i][0].item())+' '+str(original_coords[i][1].item())+' '+str(original_coords[i][2].item())+'\n')
+                else:
+                    f.write('Al '+str(original_coords[i][0].item())+' '+str(original_coords[i][1].item())+' '+str(original_coords[i][2].item())+'\n')
+            for i in range(N):
+                if i == 0:
+                    f.write('O '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
+                else:
+                    f.write('Si '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
+    else:
+        with open(file_name,'w') as f:
+            f.write(str(N)+'\n')
+            f.write('\n')
+            for i in range(N):
+                if i == 0:
+                    f.write('O '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
+                else:
+                    f.write('Si '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
 
 def test_for_main(parameters_yaml_file:str, model_state_name:str, result_save_name:str):
-
-    def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
-        if mode == 'individual':
-            file_name = '/home/rokubo/data/diffusion_model/test_vesta/individual/' + str(save_name) + '.xyz'
-        elif mode == 'seed_dependence':
-            file_name = '/home/rokubo/data/diffusion_model/test_vesta/seed_dependence/' + str(save_name) + '.xyz'
-        N = generated_coords.shape[0]
-        if original_coords is not None:
-            with open(file_name,'w') as f:
-                f.write(str(N*2)+'\n')
-                f.write('\n')
-                for i in range(N):
-                    if i == 0:
-                        f.write('F '+str(original_coords[i][0].item())+' '+str(original_coords[i][1].item())+' '+str(original_coords[i][2].item())+'\n')
-                    else:
-                        f.write('Al '+str(original_coords[i][0].item())+' '+str(original_coords[i][1].item())+' '+str(original_coords[i][2].item())+'\n')
-                for i in range(N):
-                    if i == 0:
-                        f.write('O '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
-                    else:
-                        f.write('Si '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
-        else:
-            with open(file_name,'w') as f:
-                f.write(str(N)+'\n')
-                f.write('\n')
-                for i in range(N):
-                    if i == 0:
-                        f.write('O '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
-                    else:
-                        f.write('Si '+str(generated_coords[i][0].item())+' '+str(generated_coords[i][1].item())+' '+str(generated_coords[i][2].item())+'\n')
 
     with open(parameters_yaml_file,'r') as file:
         params = yaml.safe_load(file)
@@ -103,11 +101,20 @@ def test_for_main(parameters_yaml_file:str, model_state_name:str, result_save_na
     x_output_size = 1
     x_hidden_size = params['x_hidden_size']
     
-
-
+    if torch.cuda.is_available():
+        torch.set.default_tensor_type(torch.cuda.FloatTensor)
+    else
+        torch.set.default_tensor_type(torch.FloatTensor)
+    
+    if to_compress_spectrum:
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size).to(device)
+        h_size = compressed_spectrum_size + atom_type_size + t_size
+        m_input_size = h_size + h_size + d_size
+        h_input_size = h_size + m_size
+        h_output_size = h_size
+        x_input_size = h_size + h_size + d_size
 
     egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    
 
     diffusion_process = E3DiffusionProcess(s=noise_precision,num_diffusion_timestep=num_diffusion_timestep)
     
@@ -136,24 +143,14 @@ def test_for_main(parameters_yaml_file:str, model_state_name:str, result_save_na
     train_data, val_data, test_data = setupdata.split(dataset)
 
 
-    """
-    for i in range(len(test_data)):
-        if test_data[i].id == 'mp-1244968_81':
-            print(i)
-    pdb.set_trace()
-    """
-
-    #theta_list = [] #theta is the angle of original
-    #phi_list = [] #phi is the angle of generated
-
-    original_coords_list = []
-    generated_coords_list = []
+    original_graph_list = []
+    generated_graph_list = []
 
     if conditional:
         for data in test_data:
             seed_value = 0
             num_of_generated_coords = 0
-            how_many_gen = 10
+            how_many_gen = 10 #一つのグラフに対して何種類のseedから生成するか　パラメータで定めたい
             while num_of_generated_coords != how_many_gen:
                 
                 torch.manual_seed(seed_value)
@@ -168,59 +165,82 @@ def test_for_main(parameters_yaml_file:str, model_state_name:str, result_save_na
                         if i != j:
                             edge_index.append([i, j])
                 initial_coords = torch.zeros(size=(num_atom,3))
+                initial_h = torch.zeros(size=(num_atom,h_size))
                 initial_coords.normal_()
+                initial_h.normal_()
                 initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
-                atom_type = [[1,0]]
-                for i in range(num_atom-1):
-                    atom_type.append([0,1])
-                x = torch.tensor(atom_type,dtype=torch.float32)
-                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords,spectrum=data.spectrum)#
-
-                graph.node = graph.pos
+                graph = Data(x=initial_h,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords,spectrum=data.spectrum)#
 
                 egnn.eval()
-                transition_of_coords_per_100step = []
+                transition_of_graph_per_100step = []
                 with torch.no_grad():
                     for time in list(range(num_diffusion_timestep,0,-1)):
                         if time%100 == 0:
-                            transition_of_coords_per_100step.append(graph.pos)
+                            transition_of_graph_per_100step.append(graph)
                     
                         time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
-                        graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
+                        graph.h = torch.cat((onehot_scaling_factor*graph.x[:,:2],graph.x[:,2:]),dim=1)
 
-                        new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
+                        new_h, new_x = egnn(graph.edge_index,torch.cat((graph.h,time_tensor),dim=1),graph.pos)
 
                         epsilon_x = remove_mean(new_x - graph.pos)
                         epsilon_h = new_h
                         mu_x = diffusion_process.calculate_mu(graph.pos,epsilon_x,time)
                         mu_h = diffusion_process.calculate_mu(graph.h,epsilon_h,time)
-                        graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
-                        graph.h = #reverse_diffuseによるhの更新
-
+                        graph.pos = diffusion_process.reverse_diffuse_one_step(mu_x,time,mode='x')
+                        graph.h = diffusion_process.reverse_diffuse_one_step(mu_h,time,mode='h')
                         if not torch.isfinite(graph.pos).all():
                             #raise ValueError('nan')
                             print('nan')
                             seed_value += 1
                             break
+                        if not torch.isfinite(graph.h).all():
+                            #raise ValueError('nan')
+                            print('nan')
+                            seed_value += 1
+                            break
+                
+                    time_tensor = torch.tensor([[0] for d in range(num_atom)],dtype=torch.float32)
+                    graph.h = torch.cat((onehot_scaling_factor*graph.x[:,:2],graph.x[:,2:]),dim=1)
+                    new_h, new_x = egnn(graph.edge_index,torch.cat((graph.h,time_tensor),dim=1),graph.pos)
+                    epsilon_x = remove_mean(new_x - graph.pos)
+                    epsilon_h = new_h
+                    alpha_0 = diffusion_process.alpha_schedule[0]
+                    sigma_0 = diffusion_process.sigma_schedule[0]
+                    mu_x = graph.pos / alpha_0 - sigma_0 * epsilon_x / alpha_0
+                    noise_x = torch.zeros_like(graph.pos)
+                    noise_x.normal_(mean=0,std=1)
+                    noise_x = remove_mean(noise_x)
+                    graph.pos = mu_x + sigma_0 * noise_x / alpha_0
+                    mu_h = graph.h / alpha_0 - sigma_0 * epsilon_h / alpha_0
+                    noise_h = torch.zeros_like(graph.h)
+                    noise_h.normal_(mean=0,std=1)
+                    graph.h = mu_h + sigma_0 * noise_h / alpha_0
+                    h_onehot = graph.h[:,:2]
+                    h_spectrum = graph.[:,2:]
+                    h_atoms = nn.functional.one_hot(torch.argmax(h_onehot,dim=1),num_classes=2)
+                    graph.h = torch.cat((h_atoms,h_spectrum),dim=1)
+
+
                 if torch.isfinite(graph.pos).all():
-                    transition_of_coords_per_100step.append(graph.pos)
-                    transition_of_coords_per_100step = torch.stack(transition_of_coords_per_100step)
-                    transition_of_coords_per_100step = np.array(transition_of_coords_per_100step)
+                    transition_of_graph_per_100step.append(graph)
+                    transition_of_graph_per_100step = torch.stack(transition_of_graph_per_100step)
+                    transition_of_graph_per_100step = np.array(transition_of_graph_per_100step)
                     num_of_generated_coords += 1
                     seed_value += 1
                 
-                    original_coords_list.append(data.pos)
-                    generated_coords_list.append(trainsition_of_coords_per_100step)
+                    original_graph_list.append(data)
+                    generated_graph_list.append(graph)
     else:
         seed_value = 0
         num_of_generated_coords = 0
-        how_many_gen = 1000
+        how_many_gen = 1000 #一つのグラフに対して何種類のseedから生成するか　パラメータで定めたい
         while num_of_generated_coords != how_many_gen:
             
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
             random.seed(seed_value)
-            num_atom = data.spectrum.shape[0] #
+            num_atom = data.spectrum.shape[0] #現在はベクトルのサイズを参照しているが、実際は予測する
 
 
             edge_index = []
@@ -229,46 +249,70 @@ def test_for_main(parameters_yaml_file:str, model_state_name:str, result_save_na
                     if i != j:
                         edge_index.append([i, j])
             initial_coords = torch.zeros(size=(num_atom,3))
+            initial_h = torch.zeros(size=(num_atom,h_size))
             initial_coords.normal_()
+            initial_h.normal_()
             initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
-            atom_type = [[1,0]]
-            for i in range(num_atom-1):
-                atom_type.append([0,1])
-            x = torch.tensor(atom_type,dtype=torch.float32)
-            graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords)
-            graph.node = graph.pos
-
+            graph = Data(x=initial_h,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous(),pos=initial_coords,spectrum=data.spectrum)#
 
             egnn.eval()
-            transition_of_coords_per_100step = []
+            transition_of_graph_per_100step = []
             with torch.no_grad():
                 for time in list(range(num_diffusion_timestep,0,-1)):
                     if time%100 == 0:
-                        transition_of_coords_per_100step.append(graph.pos)
+                        transition_of_graph_per_100step.append(graph)
                 
                     time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32)
-                    graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
+                    graph.h = onehot_scaling_factor*graph.x[:,:2]
 
-                    new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
+                    new_h, new_x = egnn(graph.edge_index,torch.cat((graph.h,time_tensor),dim=1),graph.pos)
 
-                    epsilon = remove_mean(new_x - graph.pos)
-                    mu = diffusion_process.calculate_mu(graph.pos,epsilon,time)
-                    graph.pos = diffusion_process.reverse_diffuse_one_step(mu,time)
-
+                    epsilon_x = remove_mean(new_x - graph.pos)
+                    epsilon_h = new_h
+                    mu_x = diffusion_process.calculate_mu(graph.pos,epsilon_x,time)
+                    mu_h = diffusion_process.calculate_mu(graph.h,epsilon_h,time)
+                    graph.pos = diffusion_process.reverse_diffuse_one_step(mu_x,time,mode='x')
+                    graph.h = diffusion_process.reverse_diffuse_one_step(mu_h,time,mode='h')
                     if not torch.isfinite(graph.pos).all():
                         #raise ValueError('nan')
                         print('nan')
                         seed_value += 1
                         break
+                    if not torch.isfinite(graph.h).all():
+                        #raise ValueError('nan')
+                        print('nan')
+                        seed_value += 1
+                        break
+            
+                time_tensor = torch.tensor([[0] for d in range(num_atom)],dtype=torch.float32)
+                graph.h = onehot_scaling_factor*graph.x[:,:2]
+                new_h, new_x = egnn(graph.edge_index,torch.cat((graph.h,time_tensor),dim=1),graph.pos)
+                epsilon_x = remove_mean(new_x - graph.pos)
+                epsilon_h = new_h
+                alpha_0 = diffusion_process.alpha_schedule[0]
+                sigma_0 = diffusion_process.sigma_schedule[0]
+                mu_x = graph.pos / alpha_0 - sigma_0 * epsilon_x / alpha_0
+                noise_x = torch.zeros_like(graph.pos)
+                noise_x.normal_(mean=0,std=1)
+                noise_x = remove_mean(noise_x)
+                graph.pos = mu_x + sigma_0 * noise_x / alpha_0
+                mu_h = graph.h / alpha_0 - sigma_0 * epsilon_h / alpha_0
+                noise_h = torch.zeros_like(graph.h)
+                noise_h.normal_(mean=0,std=1)
+                graph.h = mu_h + sigma_0 * noise_h / alpha_0
+                h_atoms = nn.functional.one_hot(torch.argmax(graph.h,dim=1),num_classes=2)
+                graph.h = h_atoms
+
+
             if torch.isfinite(graph.pos).all():
-                transition_of_coords_per_100step.append(graph.pos)
-                transition_of_coords_per_100step = torch.stack(transition_of_coords_per_100step)
-                transition_of_coords_per_100step = np.array(transition_of_coords_per_100step)
+                transition_of_graph_per_100step.append(graph)
+                transition_of_graph_per_100step = torch.stack(transition_of_graph_per_100step)
+                transition_of_graph_per_100step = np.array(transition_of_graph_per_100step)
                 num_of_generated_coords += 1
                 seed_value += 1
             
-                original_coords_list.append(-1)
-                generated_coords_list.append(trainsition_of_coords_per_100step)
+                original_graph_list.append(-1)
+                generated_graph_list.append(graph)
                 
     np.savez(result_save_name + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
