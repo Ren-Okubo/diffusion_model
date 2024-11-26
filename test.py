@@ -1,4 +1,4 @@
-import torch, copy, itertools, random, datetime, pdb, sys, yaml, os
+import torch, copy, itertools, random, datetime, pdb, sys, yaml, os, tqdm
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split, Subset
@@ -6,7 +6,6 @@ from torchvision import datasets
 import numpy as np
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 import torch.nn.init as init
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score, confusion_matrix, f1_score
 import split_to_train_and_test
@@ -128,7 +127,7 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202411121412'
+    model_path = 'egnn_202411191726'
 
     state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
@@ -162,15 +161,19 @@ if __name__ == '__main__':
     original_coords_list = []
     generated_coords_list = []
 
+    #test_data_subset = torch.utils.data.Subset(test_data, list(range(5)))
+
+
     if conditional:
-        for data in test_data:
+        seed_value = 0
+        for i in tqdm(range(len(test_data))):
+            data = test_data[i]
             if data.spectrum.shape[0] != 3:
                 continue
-
-            seed_value = 0
+                
             num_of_generated_coords = 0
 
-            how_many_gen = 10
+            how_many_gen = 5
             while num_of_generated_coords != how_many_gen:
                 
                 torch.manual_seed(seed_value)
@@ -202,6 +205,7 @@ if __name__ == '__main__':
                 egnn.eval()
                 with torch.no_grad():
                     for time in list(range(num_diffusion_timestep,0,-1)):
+
                         if time%100 == 0:
                             transition_of_coords_per_100steps.append(graph.pos)
                         
@@ -230,11 +234,34 @@ if __name__ == '__main__':
                     transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
                     num_of_generated_coords += 1
                     seed_value += 1
-                    
+                    """
+                    if num_of_generated_coords == 2:
+                        print(data.pos.numpy())
+                        print(transition_of_coords_per_100steps)
+                        print(data.pos.numpy().shape)
+                        print(transition_of_coords_per_100steps.shape)
+                        print(type(transition_of_coords_per_100steps))
+                        for i in transition_of_coords_per_100steps:
+                            if type(i) != np.ndarray:
+                                print('not ndarray')
+                                print(i)
+                        pdb.set_trace()
+                    """   
                     original_coords_list.append(data.pos)
                     generated_coords_list.append(transition_of_coords_per_100steps)
                     print('successfully generated',num_of_generated_coords)
-        np.savez('conditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+                
+        # データの形状を確認
+        for i, (original, generated) in enumerate(zip(original_coords_list, generated_coords_list)):
+            print(f"Original {i}: {original.shape}, Generated {i}: {generated.shape}")
+
+        # データを適切な形状に変換
+        original_coords_array = np.array([coords.numpy() if isinstance(coords, torch.Tensor) else coords for coords in original_coords_list])
+        generated_coords_array = np.array([coords.numpy() if isinstance(coords, torch.Tensor) else coords for coords in generated_coords_list])
+        original_coords_list = original_coords_array
+        generated_coords_list = generated_coords_array
+
+        np.savez('testconditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
     else:
         seed_value = 0
