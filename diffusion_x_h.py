@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from SNR import GammaNetwork
 
 def remove_mean(x:torch.tensor,batch_index=None):
     if batch_index is None:
@@ -12,14 +13,35 @@ def remove_mean(x:torch.tensor,batch_index=None):
             x[batch_index==i] = x[batch_index==i] - mean
     return x
 
-class E3DiffusionProcess():
-    def __init__(self,s,num_diffusion_timestep:int):
-        self.noise_precision = s
-        self.num_diffusion_timestep = num_diffusion_timestep
-        self.t = torch.linspace(0,num_diffusion_timestep,num_diffusion_timestep+1) #０からnum_diffusion_timestepまでの5001個の整数
-        self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=2.)
-        self.sigma_schedule = torch.sqrt(1-self.alpha_schedule**2)
-        
+class E3DiffusionProcess(torch.nn.Module):
+    def __init__(self,num_diffusion_timestep:int,s=None,noise_schedule:str='predefined'):
+        super(E3DiffusionProcess,self).__init__()
+        self.noise_schedule = noise_schedule
+        if noise_schedule =='predefined':
+            self.noise_precision = s
+            self.num_diffusion_timestep = num_diffusion_timestep
+            self.t = torch.linspace(0,num_diffusion_timestep,num_diffusion_timestep+1) #０からnum_diffusion_timestepまでの5001個の整数
+            self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=2.)
+            self.sigma_schedule = torch.sqrt(1-self.alpha_schedule**2)
+        elif noise_schedule =='learned':
+            self.gamma = GammaNetwork() 
+            self.num_diffusion_timestep = num_diffusion_timestep
+            self.t = torch.linspace(0,1,num_diffusion_timestep+1).view(num_diffusion_timestep+1,1)
+            self.gamma_schedule = self.gamma(self.t)
+
+    def alpha(self,t:int):
+        if self.noise_schedule == 'predefined':
+            return self.alpha_schedule[t]
+        elif self.noise_schedule == 'learned':
+            return torch.sqrt(torch.sigmoid(-self.gamma_schedule[t]))
+    
+    def sigma(self,t:int):
+        if noise_schedule == 'predefined':
+            return self.sigma_schedule[t]
+        elif noise_schedule == 'learned':
+            return torch.sqrt(torch.sigmoid(self.gamma_schedule[t]))
+
+
 
 
     def diffuse_zero_to_t(self,z:torch.tensor,t:int,mode='pos'):
@@ -27,12 +49,12 @@ class E3DiffusionProcess():
         noise.normal_(mean=0,std=1)
         if mode == 'pos':
             noise = remove_mean(noise)
-        z_after_diffuse = self.alpha_schedule[t] * z + self.sigma_schedule[t] * noise
+        z_after_diffuse = self.alpha(t) * z + self.sigma(t) * noise
         return z_after_diffuse, noise
     
     def calculate_mu(self,z:torch.tensor,epsilon:torch.tensor,t:int):
-        alpha_t = self.alpha_schedule[t]
-        alpha_s = self.alpha_schedule[t-1]
+        alpha_t = self.alpha(t)
+        alpha_s = self.alpha(t)
         squared_sigma_t = 1 - alpha_t**2
         sigma_t = torch.sqrt(squared_sigma_t)
         squared_sigma_s = 1 - alpha_s**2
@@ -45,8 +67,8 @@ class E3DiffusionProcess():
     
     def reverse_diffuse_one_step(self,z,epsilon:torch.tensor,t:int,mode='x'):
         mu = self.calculate_mu(z,epsilon,t)
-        alpha_t = self.alpha_schedule[t]
-        alpha_s = self.alpha_schedule[t-1]
+        alpha_t = self.alpha(t)
+        alpha_s = self.alpha(t)
         squared_sigma_t = 1 - alpha_t**2
         squared_sigma_s = 1 - alpha_s**2
         alpha_ts = alpha_t / alpha_s
