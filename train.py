@@ -37,6 +37,7 @@ class EarlyStopping():
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.set_default_tensor_type(torch.cuda.FloatTensor)
     print(f"device: {device}")
     with open('parameters.yaml','r') as file:
         params = yaml.safe_load(file)
@@ -46,6 +47,10 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
+    if params['noise_schedule'] == 'learned':
+        del params['noise_precision']
+        del params['noise_schedule_power']
+
     wandb.init(project='resized_spectrum',config=params,name='conditional dataset only CN2 except 180')
     
     seed = params['seed']
@@ -54,10 +59,15 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
 
     num_diffusion_timestep = params['num_diffusion_timestep']
-    noise_precision = params['noise_precision']
-    power = params['noise_schedule_power']
+    noise_schedule = params['noise_schedule']
+    if noise_schedule == 'predifined':
+        noise_precision = params['noise_precision']
+        power = params['noise_schedule_power']
+    elif noise_schedule == 'learned':
+        noise_precision = None
+        power = None
+
     num_epochs = params['num_epochs']
-    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep)
     batch_size = params['batch_size']
 
     conditional = params['conditional']
@@ -105,6 +115,7 @@ if __name__ == "__main__":
     early_stopping = EarlyStopping(patience=params['patience'])
     message_passing = MessagePassing(aggr='sum',flow='target_to_source')
     setupdata = SetUpData(seed=seed,conditional=conditional)
+    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep,noise_schedule=noise_schedule)
 
     data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
@@ -120,9 +131,9 @@ if __name__ == "__main__":
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
-    train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True)
-    val_loader = DataLoader(val_data,batch_size=batch_size,shuffle=True)
-    test_loader = DataLoader(test_data,batch_size=batch_size,shuffle=True)
+    train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True,generator=torch.Generator(device='cuda'))
+    val_loader = DataLoader(val_data,batch_size=batch_size,shuffle=True,generator=torch.Generator(device='cuda'))
+    test_loader = DataLoader(test_data,batch_size=batch_size,shuffle=True,generator=torch.Generator(device='cuda'))
 
     time_list = [i for i in range(1,num_diffusion_timestep+1)]
 
@@ -148,6 +159,10 @@ if __name__ == "__main__":
 
     for epoch in range(num_epochs):
         egnn.train()
+        if to_compress_spectrum:
+            spectrum_compressor.train()
+        if noise_schedule == 'learned':
+            diffusion_process.gamma.train()
         epoch_loss_val = 0
         epoch_loss_train = 0
         total_num_train_node = 0
@@ -199,7 +214,7 @@ if __name__ == "__main__":
             #print('epsilon : ',epsilon)
             loss = criterion(epsilon,train_graph.y)
             loss = loss / num_graph
-            loss.backward()
+            loss.backward(retain_graph=True)
             #torch.nn.utils.clip_grad_norm_(model_x.parameters(), max_grad_norm)
             #torch.nn.utils.clip_grad_norm_(model_h.parameters(), max_grad_norm)
             optimizer.step()
@@ -208,7 +223,10 @@ if __name__ == "__main__":
         
 
         egnn.eval()
-        spectrum_compressor.eval()
+        if to_compress_spectrum:
+            spectrum_compressor.eval()
+        if noise_schedule == 'learned':
+            diffusion_process.gamma.eval()
         
         with torch.no_grad():
             for val_graph in val_loader:
@@ -271,13 +289,13 @@ if __name__ == "__main__":
     
     model_states = {}
     model_state1 = egnn.state_dict()
-    model_states.update(model_state1)
+    model_states.update({'egnn': model_state1})
     if to_compress_spectrum:
         model_state2 = spectrum_compressor.state_dict()
-        model_states.update(model_state2)
+        model_states.update({'spectrum_compressor':model_state2})
     if noise_schedule == 'learned':
         model_state3 = diffusion_process.gamma.state_dict()
-        model_states.update(model_state3)
+        model_states.update({'GammaNetwork':model_state3})
     
     torch.save(model_states,"./model_state/model_to_predict_epsilon/egnn_"+now.strftime("%Y%m%d%H%M")+".pth")
     

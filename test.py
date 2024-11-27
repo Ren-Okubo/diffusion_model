@@ -53,6 +53,7 @@ def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,ori
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.set_default_tensor_type(torch.cuda.FloatTensor)
     print('device:',device)
     with open('parameters.yaml','r') as file:
         params = yaml.safe_load(file)
@@ -109,6 +110,7 @@ if __name__ == '__main__':
 
     noise_precision = params['noise_precision']
     power = params['noise_schedule_power']
+    noise_schedule = params['noise_schedule']
 
 
     if to_compress_spectrum:
@@ -122,18 +124,23 @@ if __name__ == '__main__':
 
     egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size).to(device)
 
-    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep)
+    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep,noise_schedule=noise_schedule)
     
 
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202411271147'
+    model_path = 'egnn_202411271612'
 
     state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
+    egnn.eval()
     if to_compress_spectrum:
         spectrum_compressor.load_state_dict(state_dicts['spectrum_compressor'])
+        spectrum_compressor.eval()
+    if noise_schedule == 'learned':
+        diffusion_process.gamma.load_state_dict(state_dicts['GammaNetwork'])
+        diffusion_process.gamma.eval()
     setupdata = SetUpData(seed,conditional)
     
     data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
@@ -175,6 +182,7 @@ if __name__ == '__main__':
                 continue
                 
             num_of_generated_coords = 0
+            num_of_generated_nun = 0
 
             how_many_gen = 5
             while num_of_generated_coords != how_many_gen:
@@ -229,6 +237,10 @@ if __name__ == '__main__':
                             #raise ValueError('nan')
                             print('nan')
                             seed_value += 1
+                            num_of_generated_nun += 1
+                            if num_of_generated_nun == 10:
+                                print('too much nan were generated')
+                                exit()
                             break
                 if torch.isfinite(graph.pos).all():
                     transition_of_coords_per_100steps.append(graph.pos)
@@ -255,12 +267,12 @@ if __name__ == '__main__':
                     print('successfully generated',num_of_generated_coords)
                 
         # データの形状を確認
-        for i, (original, generated) in enumerate(zip(original_coords_list, generated_coords_list)):
-            print(f"Original {i}: {original.shape}, Generated {i}: {generated.shape}")
+        #for i, (original, generated) in enumerate(zip(original_coords_list, generated_coords_list)):
+            #print(f"Original {i}: {original.shape}, Generated {i}: {generated.shape}")
 
         # データを適切な形状に変換
-        original_coords_array = np.array([coords.numpy() if isinstance(coords, torch.Tensor) else coords for coords in original_coords_list])
-        generated_coords_array = np.array([coords.numpy() if isinstance(coords, torch.Tensor) else coords for coords in generated_coords_list])
+        original_coords_array = np.array([coords.cpu().numpy() if isinstance(coords, torch.Tensor) else coords for coords in original_coords_list])
+        generated_coords_array = np.array([coords.cpu().numpy() if isinstance(coords, torch.Tensor) else coords for coords in generated_coords_list])
         original_coords_list = original_coords_array
         generated_coords_list = generated_coords_array
 
