@@ -1,4 +1,5 @@
-import torch, copy, itertools, random, datetime, pdb, sys, yaml, os, tqdm
+import torch, copy, itertools, random, datetime, pdb, sys, yaml, os
+from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset, random_split, Subset
@@ -127,14 +128,14 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202411191726'
+    model_path = 'egnn_202411271147'
 
     state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
     if to_compress_spectrum:
         spectrum_compressor.load_state_dict(state_dicts['spectrum_compressor'])
     setupdata = SetUpData(seed,conditional)
-
+    
     data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
     dataset = setupdata.resize_spectrum(dataset,resize=spectrum_size)
@@ -144,6 +145,8 @@ if __name__ == '__main__':
         if dataset[i].pos.shape[0] == 3:
             dataset_only_CN2.append(dataset[i])
     dataset = dataset_only_CN2
+    
+    #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/filtered_dataset_only_Si.pt',weights_only=True)
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
@@ -261,7 +264,7 @@ if __name__ == '__main__':
         original_coords_list = original_coords_array
         generated_coords_list = generated_coords_array
 
-        np.savez('testconditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+        np.savez('conditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
     else:
         seed_value = 0

@@ -16,6 +16,7 @@ from E3diffusion_new import E3DiffusionProcess, remove_mean
 from CN2_evaluate import calculate_angle_for_CN2
 from DataPreprocessor import SpectrumCompressor
 import wandb
+from kabsch_algorithm import kabsch_torch
 
 class EarlyStopping():
     def __init__(self, patience=0):
@@ -46,12 +47,12 @@ if __name__ == "__main__":
     
     params['now'] = now.strftime("%Y%m%d%H%M")
 
-    wandb.init(project='resized_spectrum',config=params,name='conditional dataset only CN2 except 180')
+    wandb.init(project='coords_loss,noise_loss',config=params,name='conditional dataset only CN2 except 180')
     
     seed = params['seed']
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    #random.seed(seed)
+    #np.random.seed(seed)
+    #torch.manual_seed(seed)
 
     num_diffusion_timestep = params['num_diffusion_timestep']
     noise_precision = params['noise_precision']
@@ -105,7 +106,7 @@ if __name__ == "__main__":
     early_stopping = EarlyStopping(patience=params['patience'])
     message_passing = MessagePassing(aggr='sum',flow='target_to_source')
     setupdata = SetUpData(seed=seed,conditional=conditional)
-
+    """
     data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
     dataset = setupdata.resize_spectrum(dataset=dataset,resize=spectrum_size)
@@ -116,7 +117,8 @@ if __name__ == "__main__":
             if calculate_angle_for_CN2(dataset[i].pos) < 179:
                 dataset_only_CN2.append(dataset[i])
     dataset = dataset_only_CN2
-    
+    """
+    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/filtered_dataset_only_Si.pt')
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
@@ -197,18 +199,53 @@ if __name__ == "__main__":
             epsilon = remove_mean(epsilon,batch_index=train_graph.batch)
 
             #print('epsilon : ',epsilon)
-            loss = criterion(epsilon,train_graph.y)
-            loss = loss / num_graph
+            loss_noise = criterion(epsilon,train_graph.y)
+            loss_noise = loss_noise / num_graph
+            batch_loss_coords = 0
+            for i in range(num_graph):
+                graph_index = i
+                edge_index = []
+                num_atom = train_graph.x[train_graph.batch == graph_index].shape[0]
+                pos_to_gen = torch.zeros_like(train_graph.pos[train_graph.batch == graph_index]).to(device)
+                pos_to_gen.normal_(mean=0,std=1)
+                pos_to_gen = remove_mean(pos_to_gen)
+                for i in range(num_atom):
+                    for j in range(num_atom):
+                        if i != j:
+                            edge_index.append([i, j])
+                graph_data = Data(x=train_graph.x[train_graph.batch == graph_index],edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=pos_to_gen)
+                for time in list(range(num_diffusion_timestep,0,-1)):
+                    graph_data.time = torch.tensor([[time/num_diffusion_timestep] for j in range(graph_data.x.shape[0])],dtype=torch.float32).to(device)
+                    if conditional:
+                        graph_data.spectrum = train_graph.spectrum[train_graph.batch == graph_index].to(device)
+                        if to_compress_spectrum:
+                            graph_data.spectrum = spectrum_compressor(graph_data.spectrum)
+                        graph_data.h = torch.cat((onehot_scaling_factor*graph_data.x,graph_data.spectrum,graph_data.time),dim=1)
+                    else:
+                        graph_data.h = torch.cat((onehot_scaling_factor*graph_data.x,graph_data.time),dim=1)
+                    h, x = egnn(graph_data.edge_index,graph_data.h,graph_data.pos)
+                    epsilon = x - pos_to_gen
+                    epsilon = remove_mean(epsilon)
+                    mu = diffusion_process.calculate_mu(pos_to_gen,epsilon,time)
+                    pos_to_gen = diffusion_process.reverse_diffuse_one_step(mu,time)
+                    graph_data.pos = pos_to_gen
+                    assert torch.isfinite(graph_data.pos).all(), 'nan or inf in graph_data.pos'
+                _, _, loss_coords = kabsch_torch(pos_to_gen,train_graph.pos[train_graph.batch == graph_index])
+                batch_loss_coords += loss_coords
+            loss_coords = batch_loss_coords / num_graph
+            loss = loss_noise + loss_coords
             loss.backward()
             #torch.nn.utils.clip_grad_norm_(model_x.parameters(), max_grad_norm)
             #torch.nn.utils.clip_grad_norm_(model_h.parameters(), max_grad_norm)
             optimizer.step()
-            loss = loss * num_graph
-            epoch_loss_train += loss.item()
+            loss_noise = loss_noise * num_graph
+            epoch_loss_train += loss_noise.item()
+
+
+
         
 
         egnn.eval()
-        spectrum_compressor.eval()
         
         with torch.no_grad():
             for val_graph in val_loader:
@@ -255,7 +292,41 @@ if __name__ == "__main__":
                 epsilon = x - val_graph.diffused_coords
                 epsilon = remove_mean(epsilon,batch_index=val_graph.batch)
 
-                loss = criterion(epsilon,val_graph.y)
+                loss_noise = criterion(epsilon,val_graph.y)
+                loss_coords = 0
+                for i in range(num_graph):
+                    graph_index = i
+                    edge_index = []
+                    num_atom = val_graph.x[val_graph.batch == graph_index].shape[0]
+                    pos_to_gen = torch.zeros_like(val_graph.pos[val_graph.batch == graph_index]).to(device)
+                    pos_to_gen.normal_(mean=0,std=1)
+                    pos_to_gen = remove_mean(pos_to_gen)
+                    for i in range(num_atom):
+                        for j in range(num_atom):
+                            if i != j:
+                                edge_index.append([i, j])
+                    graph_data = Data(x=val_graph.x[val_graph.batch == graph_index],edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=pos_to_gen)
+                    for time in list(range(num_diffusion_timestep,0,-1)):
+                        graph_data.time = torch.tensor([[time/num_diffusion_timestep] for j in range(graph_data.x.shape[0])],dtype=torch.long).to(device)
+                        if conditional:
+                            graph_data.spectrum = val_graph.spectrum[val_graph.batch == graph_index].to(device)
+                            if to_compress_spectrum:
+                                graph_data.spectrum = spectrum_compressor(graph_data.spectrum)
+                            graph_data.h = torch.cat((onehot_scaling_factor*graph_data.x,graph_data.spectrum,graph_data.time),dim=1)
+                        else:
+                            graph_data.h = torch.cat((onehot_scaling_factor*graph_data.x,graph_data.time),dim=1)
+                        h, x = egnn(graph_data.edge_index,graph_data.h,graph_data.pos)
+                        epsilon = x - pos_to_gen
+                        epsilon = remove_mean(epsilon)
+                        mu = diffusion_process.calculate_mu(pos_to_gen,epsilon,time)
+                        pos_to_gen = diffusion_process.reverse_diffuse_one_step(mu,time)
+                        graph_data.pos = pos_to_gen
+                        if not torch.isfinite(graph_data.pos).all():
+                            wandb.run.notes = 'nan or inf in graph_data.pos'
+                            assert torch.isfinite(graph_data.pos).all(), 'nan or inf in graph_data.pos'
+                    _, _, rmsd = kabsch_torch(pos_to_gen,val_graph.pos[val_graph.batch == graph_index])
+                    loss_coords += rmsd
+                loss = loss_noise + loss_coords
                 epoch_loss_val += loss.item()
         avg_loss_val = epoch_loss_val / total_num_val_node
         avg_loss_train = epoch_loss_train / total_num_train_node
@@ -269,16 +340,12 @@ if __name__ == "__main__":
         if early_stopping.validate(avg_loss_train):
             break
     
-    model_states = {}
     model_state1 = egnn.state_dict()
-    model_states.update(model_state1)
     if to_compress_spectrum:
         model_state2 = spectrum_compressor.state_dict()
-        model_states.update(model_state2)
-    if noise_schedule == 'learned':
-        model_state3 = diffusion_process.gamma.state_dict()
-        model_states.update(model_state3)
-    
+        model_states = {'egnn':model_state1,'spectrum_compressor':model_state2}
+    else:
+        model_states = {'egnn':model_state1}
     torch.save(model_states,"./model_state/model_to_predict_epsilon/egnn_"+now.strftime("%Y%m%d%H%M")+".pth")
     
     

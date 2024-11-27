@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from SNR import GammaNetwork
 
 def remove_mean(x:torch.tensor,batch_index=None):
     if batch_index is None:
@@ -13,14 +14,33 @@ def remove_mean(x:torch.tensor,batch_index=None):
     return x
 
 class E3DiffusionProcess():
-    def __init__(self,s,power,num_diffusion_timestep:int):
-        self.noise_precision = s
-        self.num_diffusion_timestep = num_diffusion_timestep
-        self.t = torch.linspace(0,num_diffusion_timestep,num_diffusion_timestep+1) #０からnum_diffusion_timestepまでの5001個の整数
-        #self.alpha_schedule1 = (1-2*s) * (1-(self.t / num_diffusion_timestep)**2) + s
-        #self.sigma_schedule1 = torch.sqrt(1-self.alpha_schedule1**2)
-        self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=power)
-        self.sigma_schedule = torch.sqrt(1-self.alpha_schedule**2)
+    def __init__(self,s,power,num_diffusion_timestep:int,noise_schedule:str='predefined'):
+        self.noise_schedule = noise_schedule
+        if noise_schedule =='predefined':
+            self.noise_precision = s
+            self.num_diffusion_timestep = num_diffusion_timestep
+            self.t = torch.linspace(0,num_diffusion_timestep,num_diffusion_timestep+1) #０からnum_diffusion_timestepまでの5001個の整数
+            #self.alpha_schedule1 = (1-2*s) * (1-(self.t / num_diffusion_timestep)**2) + s
+            #self.sigma_schedule1 = torch.sqrt(1-self.alpha_schedule1**2)
+            self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=power)
+            self.sigma_schedule = torch.sqrt(1-self.alpha_schedule**2)
+        elif noise_schedule =='learned':
+            self.gamma = GammaNetwork() 
+            self.num_diffusion_timestep = num_diffusion_timestep
+            self.t = torch.linspace(0,1,num_diffusion_timestep+1).view(num_diffusion_timestep+1,1)
+            self.gamma_schedule = self.gamma(self.t)
+
+    def alpha(self,t:int):
+        if self.noise_schedule == 'predefined':
+            return self.alpha_schedule[t]
+        elif self.noise_schedule == 'learned':
+            return torch.sqrt(torch.sigmoid(-self.gamma_schedule[t]))
+
+    def sigma(self,t:int):
+        if self.noise_schedule == 'predefined':
+            return self.sigma(t)
+        elif self.noise_schedule == 'learned':
+            return torch.sqrt(torch.sigmoid(self.gamma_schedule[t]))
         
         """
         print(self.alpha_schedule)
@@ -35,11 +55,11 @@ class E3DiffusionProcess():
         noise = torch.zeros_like(pos)
         noise.normal_(mean=0,std=1)
         noise = remove_mean(noise)
-        pos_after_diffuse = self.alpha_schedule[t] * pos + self.sigma_schedule[t] * noise
+        pos_after_diffuse = self.alpha(t) * pos + self.sigma(t) * noise
         return pos_after_diffuse , noise
     
     def calculate_mu(self,pos:torch.tensor,epsilon:torch.tensor,t:int):
-        alpha_t = self.alpha_schedule[t]
+        alpha_t = self.alpha(t)
         """
         print('t:',self.t[5000])
         print('alpha_t:',alpha_t)
@@ -47,12 +67,12 @@ class E3DiffusionProcess():
         print('alpha_schedule:',self.alpha_schedule)
         print('sigma_schedule:',self.sigma_schedule)
         """
-        alpha_s = self.alpha_schedule[t-1]
+        alpha_s = self.alpha(t-1)
         squared_sigma_t = 1 - alpha_t**2
         squared_sigma_s = 1 - alpha_s**2
         alpha_ts = alpha_t / alpha_s
         squared_sigma_ts = squared_sigma_t - torch.pow(alpha_ts,2) * squared_sigma_s
-        x_hat = (pos - self.sigma_schedule[t] * epsilon) / alpha_t
+        x_hat = (pos - self.sigma(t) * epsilon) / alpha_t
         """
         print('x_hat:',x_hat)
         print(alpha_s*squared_sigma_ts/squared_sigma_t)
@@ -61,8 +81,8 @@ class E3DiffusionProcess():
         return mu
     
     def reverse_diffuse_one_step(self,mu,t:int):
-        alpha_t = self.alpha_schedule[t]
-        alpha_s = self.alpha_schedule[t-1]
+        alpha_t = self.alpha(t)
+        alpha_s = self.alpha(t-1)
         squared_sigma_t = 1 - alpha_t**2
         squared_sigma_s = 1 - alpha_s**2
         alpha_ts = alpha_t / alpha_s

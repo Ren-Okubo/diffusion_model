@@ -164,7 +164,6 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
             pos_before_diffusion, h_before_diffusion = [], []
             diffused_pos, diffused_h = [], []
             y_for_noise_pos,y_for_noise_h = [], []            
-            attr_time_list = []
             each_time_list = []
             for i in range(num_graph):
                 graph_index = i
@@ -239,8 +238,7 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
                 total_num_val_node += val_graph.num_nodes
                 pos_before_diffusion, h_before_diffusion = [], []
                 diffused_pos, diffused_h = [], []
-                y_for_noise_pos,y_for_noise_h = [], []            
-                attr_time_list = []
+                y_for_noise_pos,y_for_noise_h = [], []
                 each_time_list = []
                 for i in range(num_graph):
                     graph_index = i
