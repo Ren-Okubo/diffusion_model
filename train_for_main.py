@@ -100,6 +100,7 @@ def train_for_main(parameters_yaml_file:str, wandb_project_name:str, wandb_run_n
 
     compressed_spectrum_dim = params['compressed_spectrum_dim']
     compressor_hidden_dim = params['compressor_hidden_dim']
+    to_compress_spectrum = params['to_compress_spectrum']
 
     
     early_stopping = EarlyStopping(patience=params['patience'])

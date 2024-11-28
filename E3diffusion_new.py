@@ -28,19 +28,21 @@ class E3DiffusionProcess():
             self.gamma = GammaNetwork() 
             self.num_diffusion_timestep = num_diffusion_timestep
             self.t = torch.linspace(0,1,num_diffusion_timestep+1).view(num_diffusion_timestep+1,1)
-            self.gamma_schedule = self.gamma(self.t)
+    
+    def gamma_schedule(self):
+        return self.gamma(self.t)
 
     def alpha(self,t:int):
         if self.noise_schedule == 'predefined':
             return self.alpha_schedule[t]
         elif self.noise_schedule == 'learned':
-            return torch.sqrt(torch.sigmoid(-self.gamma_schedule[t]))
+            return torch.sqrt(torch.sigmoid(-self.gamma(self.t)[t]))
 
     def sigma(self,t:int):
         if self.noise_schedule == 'predefined':
-            return self.sigma(t)
+            return self.sigma_schedule[t]
         elif self.noise_schedule == 'learned':
-            return torch.sqrt(torch.sigmoid(self.gamma_schedule[t]))
+            return torch.sqrt(torch.sigmoid(self.gamma(self.t))[t])
         
         """
         print(self.alpha_schedule)

@@ -39,6 +39,9 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_default_tensor_type(torch.cuda.FloatTensor)
     print(f"device: {device}")
+
+    torch.autograd.set_detect_anomaly(True)
+
     with open('parameters.yaml','r') as file:
         params = yaml.safe_load(file)
 
@@ -51,7 +54,7 @@ if __name__ == "__main__":
         del params['noise_precision']
         del params['noise_schedule_power']
 
-    wandb.init(project='resized_spectrum',config=params,name='conditional dataset only CN2 except 180')
+    wandb.init(project='resized_spectrum_new',config=params,name='conditional dataset only CN2 except 180')
     
     seed = params['seed']
     random.seed(seed)
@@ -60,7 +63,7 @@ if __name__ == "__main__":
 
     num_diffusion_timestep = params['num_diffusion_timestep']
     noise_schedule = params['noise_schedule']
-    if noise_schedule == 'predifined':
+    if noise_schedule == 'predefined':
         noise_precision = params['noise_precision']
         power = params['noise_schedule_power']
     elif noise_schedule == 'learned':
@@ -150,7 +153,18 @@ if __name__ == "__main__":
 
     egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size).to(device)
     
-    optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
+    if to_compress_spectrum:
+        if noise_schedule == 'learned':
+            optimizer = optim.Adam(list(egnn.parameters())+list(spectrum_compressor.parameters())+list(diffusion_process.gamma.parameters()),lr=lr,weight_decay=weight_decay)
+        else:
+            optimizer = optim.Adam(list(egnn.parameters())+list(spectrum_compressor.parameters()),lr=lr,weight_decay=weight_decay)
+    else:
+        if noise_schedule == 'learned':
+            optimizer = optim.Adam(list(egnn.parameters())+list(diffusion_process.gamma.parameters()),lr=lr,weight_decay=weight_decay)
+        else:
+            optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
+    
+
     
 
     criterion = nn.MSELoss(reduction='sum')

@@ -17,13 +17,11 @@ import wandb
 
 
 def diffuse_as_batch(batch_data:graph,graph_index,params,diffusion_process:E3DiffusionProcess,conditional=True):
-    #パラメータの定義
-    num_diffusion_timestep = params['num_diffusion_timestep']
-    spectrum_size = params['spectrum_size']
     
     time_list = [i for i in range(1,num_diffusion_timestep+1)]
     num_graph = graph_index.max().item()+1
     pos_before_diffusion, h_before_diffusion, pos_after_diffusion,h_after_diffusion, y_for_noise_pos, y_for_noise_h, each_time_list = [],[],[],[],[],[],[]
+    
     #バッチ内のグラフごとに処理を行う
     for i in range(num_graph):
         num_atom = len(x_before_dif.shape[0])
@@ -80,10 +78,10 @@ def diffuse_as_batch(batch_data:graph,graph_index,params,diffusion_process:E3Dif
 
         
 
-def train_epoch(params,model,train_data,eval_data,optimizer,diffusion_process):
+def train_epoch(train_loader,params,diffusion_process,optimizer,nn_dict):
     egnn = model
     egnn.train()
-    train_datast = train_data
+    train_dataset = train_loader
 
     #parameterの定義
     num_diffusion_timestep = params['num_diffusion_timestep']
