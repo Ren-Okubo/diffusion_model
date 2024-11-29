@@ -1,9 +1,21 @@
 import argparse
 import sys
 import os
+import wandb
+import yaml
+import random
+import torch
+import datetime
+import pytz
+import numpy as np
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from train_per_iretation import diffuse_as_batch, train_epoch, val_epoch
+from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
+from EquivariantGraphNeuralNetwork import EquivariantGNN
+from diffusion_x_h import E3DiffusionProcess
+from split_to_train_and_test import SetUpData
+from DataPreprocessor import SpectrumCompressor
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -65,30 +77,35 @@ if __name__ == '__main__':
     compressed_spectrum_dim = prms['compressed_spectrum_dim']
 
     #default_tensor_typeの設定
-
+    torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
     #seedの設定
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
-    
-    #datasetの読み込み
-    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset.pt')
-
-    #spectrumサイズの設定（-1~19eVがデフォルト）
-
-    #DataLoaderの設定
-    train_loader = DataLoader(dataset,batch_size=batch_size,shuffle=True)
-    val_loader = DataLoader(dataset,batch_size=batch_size,shuffle=True)
-    test_loader = DataLoader(dataset,batch_size=batch_size,shuffle=True)
 
     #modelの定義
     diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep,noise_schedule=noise_schedule)
     egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
     if to_compress_spectrum:
-        spectrum_compressor = SpectrumCompressor(original_spectrum_dim,spectrum_hidden_dim,compressed_spectrum_dim)
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compresser_hidden_dim,compressed_spectrum_dim)
     early_stopping = EarlyStopping(patience=patience)
-    setupdata = SetUpData(seed=seed,conditional=conditional)
+    setupdata = SetUpData(seed=seed,conditional=conditional)    
+    
+    #datasetの読み込み
+    dataset_path = args.dataset_path
+    dataset = torch.load(dataset_path)
+    wandb.config.update({'dataset_path':dataset_path})
+
+    #spectrumサイズの設定（-1~19eVがデフォルト）
+
+    #datasetの分割
+    train_data, eval_data, test_data = setupdata.split(dataset)
+    train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True)
+    eval_loader = DataLoader(eval_data,batch_size=batch_size,shuffle=True)
+
+
+
 
     #optimizerの設定
     if to_compress_spectrum:
@@ -106,9 +123,51 @@ if __name__ == '__main__':
             optimizer = torch.optim.Adam(list(egnn.parameters()),lr=lr,weight_decay=weight_decay)
             nn_dict = {'egnn':egnn,'spectrum_compressor':None}
     
-    #train
-
+    #train,eval
     for epoch in range(num_epochs):
-        train_epoch()
-    #test
+        avg_loss_train = train_epoch(nn_dict,train_loader,prms,diffusion_process,optimizer)
+        avg_loss_eval = eval_epoch(nn_dict,eval_loader,prms,diffusion_process)
+
+        #各epochにおけるlossを記録
+        print(f'epoch:{epoch},train_loss:{avg_loss_train},eval_loss:{avg_loss_eval}')
+        wandb.log({'train_loss':avg_loss_train,'eval_loss':avg_loss_eval})
+
+        #early stopping
+        if early_stopping.validate(avg_loss_eval):
+            break
+    
+    #モデルの保存
+    model_states = {'egnn':egnn.state_dict()}
+    if prms['to_compress_spectrum']:
+        model_states['spectrum_compressor'] = spectrum_compressor.state_dict()
+    if prms['noise_schedule'] == 'learned':
+        model_states['gamma'] = diffusion_process.gamma.state_dict()
+    
+    model_save_path = os.path.join(wandb.run.dir,'model.pth')
+    torch.save(model_states,model_save_path)
+    wandb.config.update({'model_save_path':model_save_path})
+    print(f'model saved at {model_save_path}')
+
+    #generate
+    original_graph_list, generated_graph_list = generate(nn_dict,test_data,prms,diffusion_process)
+
+    #生成したグラフを保存
+    generated_graph_save_path = os.path.join(wandb.run.dir,'generated_graph.pt')
+    torch.save(generated_graph_list,generated_graph_save_path)
+    wandb.config.update({'generated_graph_save_path':generated_graph_save_path})
+    print(f'generated graph saved at {generated_graph_save_path}')
+    if conditional:
+        original_graph_save_path = os.path.join(wandb.run.dir,'original_graph.pt')
+        torch.save(original_graph_list,original_graph_save_path)
+        wandb.config.update({'original_graph_save_path':original_graph_save_path})
+        print(f'original graph saved at {original_graph_save_path}')
+    
+    #生成したデータの評価
+    if conditional:
+        rmsd_value_list = []
+
+
+
+
+
     

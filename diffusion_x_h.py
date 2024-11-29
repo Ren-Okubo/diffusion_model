@@ -27,19 +27,22 @@ class E3DiffusionProcess(torch.nn.Module):
             self.gamma = GammaNetwork() 
             self.num_diffusion_timestep = num_diffusion_timestep
             self.t = torch.linspace(0,1,num_diffusion_timestep+1).view(num_diffusion_timestep+1,1)
-            self.gamma_schedule = self.gamma(self.t)
+
+    def gamma_schedule(self):
+        return self.gamma(self.t)
+
 
     def alpha(self,t:int):
         if self.noise_schedule == 'predefined':
             return self.alpha_schedule[t]
         elif self.noise_schedule == 'learned':
-            return torch.sqrt(torch.sigmoid(-self.gamma_schedule[t]))
+            return torch.sqrt(torch.sigmoid(-self.gamma(self.t)[t]))
     
     def sigma(self,t:int):
-        if noise_schedule == 'predefined':
+        if self.noise_schedule == 'predefined':
             return self.sigma_schedule[t]
-        elif noise_schedule == 'learned':
-            return torch.sqrt(torch.sigmoid(self.gamma_schedule[t]))
+        elif self.noise_schedule == 'learned':
+            return torch.sqrt(torch.sigmoid(self.gamma(self.t)[t]))
 
 
 
@@ -65,7 +68,7 @@ class E3DiffusionProcess(torch.nn.Module):
         mu = z / alpha_ts - squared_sigma_ts * epsilon / alpha_ts / sigma_t
         return mu
     
-    def reverse_diffuse_one_step(self,z,epsilon:torch.tensor,t:int,mode='x'):
+    def reverse_diffuse_one_step(self,z,epsilon:torch.tensor,t:int,mode='pos'):
         mu = self.calculate_mu(z,epsilon,t)
         alpha_t = self.alpha(t)
         alpha_s = self.alpha(t)
@@ -76,7 +79,7 @@ class E3DiffusionProcess(torch.nn.Module):
         std = torch.sqrt(squared_sigma_ts * squared_sigma_s / squared_sigma_t)
         noise = torch.zeros_like(z).to(z.device)
         noise.normal_(mean=0,std=1)
-        if mode =='x':
+        if mode =='pos':
             noise = remove_mean(noise)
         z = mu + std * noise
         return z

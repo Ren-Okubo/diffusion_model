@@ -34,9 +34,9 @@ class GammaNetwork(torch.nn.Module):
         self.l3 = PositiveLinear(1024, 1)
 
         #self.gamma_0 = torch.nn.Parameter(torch.tensor([-5.]))
-        #self.gamma_1 = torch.nn.Parameter(torch.tensor([10.]))
+        self.gamma_1 = torch.nn.Parameter(torch.tensor([10.]))
         self.gamma_0 = torch.tensor([-5.],requires_grad=True)
-        self.gamma_1 = torch.tensor([10.],requires_grad=True)
+        #self.gamma_1 = torch.tensor([10.],requires_grad=True)
 
     def show_schedule(self, num_steps=50):
         t = torch.linspace(0, 1, num_steps).view(num_steps, 1)
