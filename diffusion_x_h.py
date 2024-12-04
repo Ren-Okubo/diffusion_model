@@ -14,14 +14,15 @@ def remove_mean(x:torch.tensor,batch_index=None):
     return x
 
 class E3DiffusionProcess(torch.nn.Module):
-    def __init__(self,num_diffusion_timestep:int,s=None,noise_schedule:str='predefined'):
+    def __init__(self,s,power,num_diffusion_timestep:int,noise_schedule:str='predefined'):
         super(E3DiffusionProcess,self).__init__()
         self.noise_schedule = noise_schedule
         if noise_schedule =='predefined':
             self.noise_precision = s
+            self.power = power
             self.num_diffusion_timestep = num_diffusion_timestep
             self.t = torch.linspace(0,num_diffusion_timestep,num_diffusion_timestep+1) #０からnum_diffusion_timestepまでの5001個の整数
-            self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=2.)
+            self.alpha_schedule = self.polynomial_schedule(num_diffusion_timestep,s=s,power=power)
             self.sigma_schedule = torch.sqrt(1-self.alpha_schedule**2)
         elif noise_schedule =='learned':
             self.gamma = GammaNetwork() 
@@ -48,11 +49,13 @@ class E3DiffusionProcess(torch.nn.Module):
 
 
     def diffuse_zero_to_t(self,z:torch.tensor,t:int,mode='pos'):
-        noise = torch.zeros_like(z).to(z.device)        
+        noise = torch.zeros_like(z,dtype=torch.float).to(z.device)        
         noise.normal_(mean=0,std=1)
         if mode == 'pos':
             noise = remove_mean(noise)
-        z_after_diffuse = self.alpha(t) * z + self.sigma(t) * noise
+        alpha_t = self.alpha(t).to(z.device)
+        sigma_t = self.sigma(t).to(z.device)
+        z_after_diffuse = alpha_t * z + sigma_t * noise
         return z_after_diffuse, noise
     
     def calculate_mu(self,z:torch.tensor,epsilon:torch.tensor,t:int):

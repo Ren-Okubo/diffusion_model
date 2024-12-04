@@ -8,19 +8,33 @@ import torch
 import datetime
 import pytz
 import numpy as np
+import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
 from EquivariantGraphNeuralNetwork import EquivariantGNN
 from diffusion_x_h import E3DiffusionProcess
 from split_to_train_and_test import SetUpData
 from DataPreprocessor import SpectrumCompressor
+
+sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
+from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
+from loss_calculation import kabsch_torch
+
+def load_model_state(nn_dict,model_save_path,params):
+    state_dicts = torch.load(model_save_path,weights_only=True)
+    nn_dict['egnn'].load_state_dict(state_dicts['egnn'])
+    if params['to_compress_spectrum']:
+        nn_dict['spectrum_compressor'].load_state_dict(state_dicts['spectrum_compressor'])
+    if params['noise_schedule'] == 'learned':
+        nn_dict['gamma'].load_state_dict(state_dicts['gamma'])
+    return nn_dict
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--project_name',type=str,default='diffusion_first_nearest')
     parser.add_argument('--dataset_path',type=str,default='/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset.pt')
+    parser.add_argument('--mode',type=str,default='train_and_generate') #train_and_generate, train_only, generate_only, evaluate_only
     args = parser.parse_args()
 
     #parameterの読み込み
@@ -31,7 +45,12 @@ if __name__ == '__main__':
     prms['now'] = now.strftime("%Y%m%d%H%M")
 
     #wandbの設定
-    run = wandb.init(project=args.project_name,config=prms)
+    assert args.mode in ['train_and_generate','train_only','generate_only','evaluate_only']
+    if args.mode == 'train_and_generate' or args.mode == 'train_only':
+        run = wandb.init(project=args.project_name,config=prms)
+    elif args.mode == 'generate_only' or args.mode == 'evaluate_only':
+        run_id = input('run_id:')
+        run = wandb.init(project=args.project_name,config=prms,id=run_id,resume='must')
 
     #パラメータの設定
     #全体のパラメータ
@@ -42,6 +61,17 @@ if __name__ == '__main__':
     #optimizerのパラメータ
     lr = prms['lr']
     weight_decay = prms['weight_decay']
+    #early stoppingのパラメータ
+    patience = prms['patience']
+    #diffusion_processのパラメータ
+    num_diffusion_timestep = prms['num_diffusion_timestep']
+    noise_schedule = prms['noise_schedule']
+    noise_precision = prms['noise_precision']
+    power = prms['noise_schedule_power']
+    #spectrum_compressorのパラメータ
+    to_compress_spectrum = prms['to_compress_spectrum']
+    compressor_hidden_dim = prms['compressor_hidden_dim']
+    compressed_spectrum_size = prms['compressed_spectrum_size']
     #egnnのパラメータ
     L = prms['L']
     atom_type_size = prms['atom_type_size']
@@ -49,32 +79,24 @@ if __name__ == '__main__':
     d_size = prms['d_size']
     t_size = prms['t_size']
     if conditional:
-        h_size = atom_type_size + spectrum_size
+        if prms['to_compress_spectrum']:
+            h_size = atom_type_size + compressed_spectrum_size + t_size
+        else:
+            h_size = atom_type_size + spectrum_size + t_size
     else:
-        h_size = atom_type_size
+        h_size = atom_type_size + t_size
     x_size = prms['x_size']
     m_size = prms['m_size']   
-    m_input_size = h_size + t_size + h_size + t_size + d_size
+    m_input_size = h_size + h_size + d_size
     m_hidden_size = prms['m_hidden_size']
     m_output_size = m_size
-    h_input_size = h_size + t_size + m_size
+    h_input_size = h_size + m_size
     h_hidden_size = prms['h_hidden_size']
-    h_output_size = h_size
-    x_input_size = h_size + t_size + h_size + t_size + d_size
+    h_output_size = h_size 
+    x_input_size = h_size + h_size + d_size
     x_hidden_size = prms['x_hidden_size']
     x_output_size = 1
     onehot_scaling_factor = prms['onehot_scaling_factor']
-    #early stoppingのパラメータ
-    patience = prms['patience']
-    #diffusion_processのパラメータ
-    num_diffusion_timestep = prms['num_diffusion_timestep']
-    noise_schedule = prms['noise_schedule']
-    noise_precision = prms['noise_precision']
-    power = prms['power']
-    #spectrum_compressorのパラメータ
-    to_compress_spectrum = prms['to_compress_spectrum']
-    compresser_hidden_dim = prms['compresser_hidden_dim']
-    compressed_spectrum_dim = prms['compressed_spectrum_dim']
 
     #default_tensor_typeの設定
     torch.set_default_tensor_type(torch.cuda.FloatTensor)
@@ -88,7 +110,7 @@ if __name__ == '__main__':
     diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep,noise_schedule=noise_schedule)
     egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
     if to_compress_spectrum:
-        spectrum_compressor = SpectrumCompressor(spectrum_size,compresser_hidden_dim,compressed_spectrum_dim)
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
     early_stopping = EarlyStopping(patience=patience)
     setupdata = SetUpData(seed=seed,conditional=conditional)    
     
@@ -98,11 +120,22 @@ if __name__ == '__main__':
     wandb.config.update({'dataset_path':dataset_path})
 
     #spectrumサイズの設定（-1~19eVがデフォルト）
+    for data in dataset:
+        spectrum = data.spectrum
+        resized_spectrum = spectrum[:,:spectrum_size]
+        data.spectrum = resized_spectrum
+
+    # デバイスの設定
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # 乱数生成器を作成し、CUDAデバイスに設定
+    generator = torch.Generator(device=device)
+    generator.manual_seed(seed)  # 任意のシード値を設定
 
     #datasetの分割
     train_data, eval_data, test_data = setupdata.split(dataset)
-    train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True)
-    eval_loader = DataLoader(eval_data,batch_size=batch_size,shuffle=True)
+    train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True,generator=generator)
+    eval_loader = DataLoader(eval_data,batch_size=batch_size,shuffle=True,generator=generator)
 
 
 
@@ -123,48 +156,97 @@ if __name__ == '__main__':
             optimizer = torch.optim.Adam(list(egnn.parameters()),lr=lr,weight_decay=weight_decay)
             nn_dict = {'egnn':egnn,'spectrum_compressor':None}
     
-    #train,eval
-    for epoch in range(num_epochs):
-        avg_loss_train = train_epoch(nn_dict,train_loader,prms,diffusion_process,optimizer)
-        avg_loss_eval = eval_epoch(nn_dict,eval_loader,prms,diffusion_process)
+    if "train" in args.mode:
+        #train,eval
+        for epoch in range(num_epochs):
+            avg_loss_train = train_epoch(nn_dict,train_loader,prms,diffusion_process,optimizer)
+            avg_loss_eval = eval_epoch(nn_dict,eval_loader,prms,diffusion_process)
 
-        #各epochにおけるlossを記録
-        print(f'epoch:{epoch},train_loss:{avg_loss_train},eval_loss:{avg_loss_eval}')
-        wandb.log({'train_loss':avg_loss_train,'eval_loss':avg_loss_eval})
+            #各epochにおけるlossを記録
+            print(f'epoch:{epoch}    train_loss:{avg_loss_train}     eval_loss:{avg_loss_eval}')
+            wandb.log({'train_loss':avg_loss_train,'eval_loss':avg_loss_eval})
 
-        #early stopping
-        if early_stopping.validate(avg_loss_eval):
-            break
+            #early stopping
+            if early_stopping.validate(avg_loss_eval):
+                break
+        
+        #モデルの保存
+        model_states = {'egnn':egnn.state_dict()}
+        if prms['to_compress_spectrum']:
+            model_states['spectrum_compressor'] = spectrum_compressor.state_dict()
+        if prms['noise_schedule'] == 'learned':
+            model_states['gamma'] = diffusion_process.gamma.state_dict()
+        
+        model_save_path = os.path.join(wandb.run.dir,'model.pth')
+        torch.save(model_states,model_save_path)
+        wandb.config.update({'model_save_path':model_save_path})
+        print(f'model saved at {model_save_path}')
+
+        #trainのみの場合
+        if args.mode == 'only_train':
+            wandb.finish()
+            sys.exit()
+
+    #generateのみの場合モデルの状態を読み込む
+    if args.mode == 'generate_only':
+        model_save_path = wandb.config['model_save_path']
+        load_model_state(nn_dict,model_save_path,prms)
+
+    if "generate" in args.mode:
+        #generate
+        original_graph_list, generated_graph_list = generate(nn_dict,test_data,prms,diffusion_process)
+
+        #生成したグラフを保存
+        generated_graph_save_path = os.path.join(wandb.run.dir,'generated_graph.pt')
+        torch.save(generated_graph_list,generated_graph_save_path)
+        wandb.config.update({'generated_graph_save_path':generated_graph_save_path})
+        print(f'generated graph saved at {generated_graph_save_path}')
+        if conditional:
+            original_graph_save_path = os.path.join(wandb.run.dir,'original_graph.pt')
+            torch.save(original_graph_list,original_graph_save_path)
+            wandb.config.update({'original_graph_save_path':original_graph_save_path})
+            print(f'original graph saved at {original_graph_save_path}')
     
-    #モデルの保存
-    model_states = {'egnn':egnn.state_dict()}
-    if prms['to_compress_spectrum']:
-        model_states['spectrum_compressor'] = spectrum_compressor.state_dict()
-    if prms['noise_schedule'] == 'learned':
-        model_states['gamma'] = diffusion_process.gamma.state_dict()
-    
-    model_save_path = os.path.join(wandb.run.dir,'model.pth')
-    torch.save(model_states,model_save_path)
-    wandb.config.update({'model_save_path':model_save_path})
-    print(f'model saved at {model_save_path}')
+    #evaluateのみの場合
+    if args.mode == 'evaluate_only':
+        original_graph_list = torch.load(wandb.config['original_graph_save_path'])
+        generated_graph_list = torch.load(wandb.config['generated_graph_save_path'])
 
-    #generate
-    original_graph_list, generated_graph_list = generate(nn_dict,test_data,prms,diffusion_process)
 
-    #生成したグラフを保存
-    generated_graph_save_path = os.path.join(wandb.run.dir,'generated_graph.pt')
-    torch.save(generated_graph_list,generated_graph_save_path)
-    wandb.config.update({'generated_graph_save_path':generated_graph_save_path})
-    print(f'generated graph saved at {generated_graph_save_path}')
-    if conditional:
-        original_graph_save_path = os.path.join(wandb.run.dir,'original_graph.pt')
-        torch.save(original_graph_list,original_graph_save_path)
-        wandb.config.update({'original_graph_save_path':original_graph_save_path})
-        print(f'original graph saved at {original_graph_save_path}')
-    
     #生成したデータの評価
     if conditional:
+        id_list = []
         rmsd_value_list = []
+        original_coords_list, generated_coords_list = [],[]
+        for i in range(len(original_graph_list)):
+            original_graph = original_graph_list[i]
+            generated_graph = generated_graph_list[i][-1]
+            if original_graph.pos.shape[0] == 1:
+                continue
+            _,_,rmsd_value = kabsch_torch(original_graph.pos,generated_graph.pos)
+            rmsd_value_list.append(rmsd_value)
+            id_list.append(original_graph.id)
+            original_coords_list.append(original_graph.pos)
+            generated_coords_list.append(generated_graph.pos)
+        id_rmsd_list = list(zip(id_list,rmsd_value_list,original_coords_list,generated_coords_list)) #rmsdの値でソート
+        sorted_id_rmsd_list = sorted(id_rmsd_list,key=lambda x:x[1])
+        #rmsdの値を保存
+        rmsd_save_path = os.path.join(wandb.run.dir,'rmsd.pt')
+        torch.save(sorted_id_rmsd_list,rmsd_save_path)
+        wandb.config.update({'rmsd_save_path':rmsd_save_path})
+        print(f'rmsd saved at {rmsd_save_path}')
+        #ソートしたrmsdの描画
+        sorted_id_list, sorted_rmsd_list,_,_ = zip(*sorted_id_rmsd_list)
+        sorted_rmsd_list = torch.tensor(sorted_rmsd_list).cpu().numpy()
+        fig, ax = plt.subplots()
+        ax.plot(sorted_rmsd_list)
+        ax.set_xlabel('sorted_index')
+        ax.set_ylabel('log rmsd')
+        ax.set_yscale('log')
+        ax.set_title('rmsd')
+        wandb.log({'rmsd':wandb.Image(fig)})
+        plt.close()
+    wandb.finish()
 
 
 
