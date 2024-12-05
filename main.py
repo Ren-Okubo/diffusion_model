@@ -15,37 +15,12 @@ from EquivariantGraphNeuralNetwork import EquivariantGNN
 from diffusion_x_h import E3DiffusionProcess
 from split_to_train_and_test import SetUpData
 from DataPreprocessor import SpectrumCompressor
+from make_xyz_from_wandb_run import write_xyz
 
 sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
 from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
 from loss_calculation import kabsch_torch
-
-def load_model_state(nn_dict,model_save_path,params):
-    state_dicts = torch.load(model_save_path,weights_only=True)
-    nn_dict['egnn'].load_state_dict(state_dicts['egnn'])
-    if params['to_compress_spectrum']:
-        nn_dict['spectrum_compressor'].load_state_dict(state_dicts['spectrum_compressor'])
-    if params['noise_schedule'] == 'learned':
-        nn_dict['gamma'].load_state_dict(state_dicts['gamma'])
-    return nn_dict
-
-def evaluate_by_rmsd(original_graph_list,generated_graph_list):
-    id_list = []
-    rmsd_value_list = []
-    original_coords_list, generated_coords_list = [],[]
-    for i in range(len(original_graph_list)):
-        original_graph = original_graph_list[i]
-        generated_graph = generated_graph_list[i][-1]
-        if original_graph.pos.shape[0] == 1:
-            continue
-        _,_,rmsd_value = kabsch_torch(original_graph.pos,generated_graph.pos)
-        rmsd_value_list.append(rmsd_value)
-        id_list.append(original_graph.id)
-        original_coords_list.append(original_graph)
-        generated_coords_list.append(generated_graph)
-    id_rmsd_original_generated_list = list(zip(id_list,rmsd_value_list,original_coords_list,generated_coords_list)) #rmsdの値でソート
-    sorted_id_rmsd_original_generated_list = sorted(id_rmsd_original_generated_list,key=lambda x:x[1])
-    return sorted_id_rmsd_original_generated_list
+from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork
 
 
 if __name__ == '__main__':
@@ -53,6 +28,8 @@ if __name__ == '__main__':
     parser.add_argument('--project_name',type=str,default='diffusion_first_nearest')
     parser.add_argument('--dataset_path',type=str,default='/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset.pt')
     parser.add_argument('--mode',type=str,default='train_and_generate') #train_and_generate, train_only, generate_only, evaluate_only
+    parser.add_argument('--record_schedule',type=bool,default=True)
+    parser.add_argument('--create_xyz_file',type=bool,default=True)
     args = parser.parse_args()
 
     #parameterの読み込み
@@ -238,12 +215,12 @@ if __name__ == '__main__':
         
         #rmsdの値を保存 [(id,rmsd,original_graph,generated_graph),...]
         rmsd_save_path = os.path.join(wandb.run.dir,'rmsd.pt')
-        torch.save(sorted_id_rmsd_list,rmsd_save_path)
+        torch.save(sorted_id_rmsd_original_generated_list,rmsd_save_path)
         wandb.config.update({'rmsd_save_path':rmsd_save_path})
         print(f'rmsd saved at {rmsd_save_path}')
 
         #ソートしたrmsdの描画
-        sorted_id_list, sorted_rmsd_list,_,_ = zip(*sorted_id_rmsd_list)
+        sorted_id_list, sorted_rmsd_list,sorted_original_graph_list,sorted_generated_graph_list = zip(*sorted_id_rmsd_original_generated_list)
         sorted_rmsd_list = torch.tensor(sorted_rmsd_list).cpu().numpy()
         fig, ax = plt.subplots()
         ax.plot(sorted_rmsd_list)
@@ -253,7 +230,35 @@ if __name__ == '__main__':
         ax.set_title('rmsd')
         wandb.log({'rmsd':wandb.Image(fig)})
         plt.close()
-        
+
+        #xyzファイルの作成
+        if args.create_xyz_file:
+            first_min_rmsd_data = sorted_id_rmsd_original_generated_list[0]
+            second_min_rmsd_data = sorted_id_rmsd_original_generated_list[1]
+            third_min_rmsd_data = sorted_id_rmsd_original_generated_list[2]
+            mid_rmsd_data = sorted_id_rmsd_original_generated_list[int(len(sorted_id_rmsd_original_generated_list)/2)]
+            max_rmad_data = sorted_id_rmsd_original_generated_list[-1]
+            write_xyz(os.path.join(run.dir,'first_min_rmsd.xyz'),first_min_rmsd_data[2],first_min_rmsd_data[3],comment='first_min_rmsd ' + str(first_min_rmsd_data[0]))
+            write_xyz(os.path.join(run.dir,'second_min_rmsd.xyz'),second_min_rmsd_data[2],second_min_rmsd_data[3],comment='second_min_rmsd ' + str(second_min_rmsd_data[0]))
+            write_xyz(os.path.join(run.dir,'third_min_rmsd.xyz'),third_min_rmsd_data[2],third_min_rmsd_data[3],comment='third_min_rmsd ' + str(third_min_rmsd_data[0]))
+            write_xyz(os.path.join(run.dir,'mid_rmsd.xyz'),mid_rmsd_data[2],mid_rmsd_data[3],comment='mid_rmsd ' + str(mid_rmsd_data[0]))
+            write_xyz(os.path.join(run.dir,'max_rmsd.xyz'),max_rmad_data[2],max_rmad_data[3],comment='max_rmsd ' + str(max_rmad_data[0]))
+            wandb.config.update({'rmsd_xyz_path':run.dir})
+
+    #noise_scheduleの記録
+    if args.record_schedule:
+        fig_alpha = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'alpha')
+        fig_sigma = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'sigma')
+        fig_gamma = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'gamma')
+        fig_SNR = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'SNR')
+        wandb.log({'alpha':wandb.Image(fig_alpha),'sigma':wandb.Image(fig_sigma),'gamma':wandb.Image(fig_gamma),'SNR':wandb.Image(fig_SNR)})
+        print('noise_schedule saved')
+        plt.close(fig_alpha)
+        plt.close(fig_sigma)
+        plt.close(fig_gamma)
+        plt.close(fig_SNR)
+
+    #wandbの終了
     wandb.finish()
 
 
