@@ -316,6 +316,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
                         #seed_value += 1
                         if num_of_generated_nan == 10:
                             print('too much nan was generated')
+                            run.tags = ['nan']
                             exit()
                         break
                     if not torch.isfinite(graph.pos).all():
@@ -323,6 +324,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
                         #seed_value += 1
                         if num_of_generated_nan == 10:
                             print('too much nan was generated')
+                            run.tags = ['nan']
                             exit()
                         break
                 

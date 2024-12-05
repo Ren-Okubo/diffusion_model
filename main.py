@@ -29,6 +29,24 @@ def load_model_state(nn_dict,model_save_path,params):
         nn_dict['gamma'].load_state_dict(state_dicts['gamma'])
     return nn_dict
 
+def evaluate_by_rmsd(original_graph_list,generated_graph_list):
+    id_list = []
+    rmsd_value_list = []
+    original_coords_list, generated_coords_list = [],[]
+    for i in range(len(original_graph_list)):
+        original_graph = original_graph_list[i]
+        generated_graph = generated_graph_list[i][-1]
+        if original_graph.pos.shape[0] == 1:
+            continue
+        _,_,rmsd_value = kabsch_torch(original_graph.pos,generated_graph.pos)
+        rmsd_value_list.append(rmsd_value)
+        id_list.append(original_graph.id)
+        original_coords_list.append(original_graph)
+        generated_coords_list.append(generated_graph)
+    id_rmsd_original_generated_list = list(zip(id_list,rmsd_value_list,original_coords_list,generated_coords_list)) #rmsdの値でソート
+    sorted_id_rmsd_original_generated_list = sorted(id_rmsd_original_generated_list,key=lambda x:x[1])
+    return sorted_id_rmsd_original_generated_list
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -215,26 +233,15 @@ if __name__ == '__main__':
 
     #生成したデータの評価
     if conditional:
-        id_list = []
-        rmsd_value_list = []
-        original_coords_list, generated_coords_list = [],[]
-        for i in range(len(original_graph_list)):
-            original_graph = original_graph_list[i]
-            generated_graph = generated_graph_list[i][-1]
-            if original_graph.pos.shape[0] == 1:
-                continue
-            _,_,rmsd_value = kabsch_torch(original_graph.pos,generated_graph.pos)
-            rmsd_value_list.append(rmsd_value)
-            id_list.append(original_graph.id)
-            original_coords_list.append(original_graph.pos)
-            generated_coords_list.append(generated_graph.pos)
-        id_rmsd_list = list(zip(id_list,rmsd_value_list,original_coords_list,generated_coords_list)) #rmsdの値でソート
-        sorted_id_rmsd_list = sorted(id_rmsd_list,key=lambda x:x[1])
-        #rmsdの値を保存
+        #生成したグラフのrmsdを計算し、ソート
+        sorted_id_rmsd_original_generated_list = evaluate_by_rmsd(original_graph_list,generated_graph_list)
+        
+        #rmsdの値を保存 [(id,rmsd,original_graph,generated_graph),...]
         rmsd_save_path = os.path.join(wandb.run.dir,'rmsd.pt')
         torch.save(sorted_id_rmsd_list,rmsd_save_path)
         wandb.config.update({'rmsd_save_path':rmsd_save_path})
         print(f'rmsd saved at {rmsd_save_path}')
+
         #ソートしたrmsdの描画
         sorted_id_list, sorted_rmsd_list,_,_ = zip(*sorted_id_rmsd_list)
         sorted_rmsd_list = torch.tensor(sorted_rmsd_list).cpu().numpy()
@@ -246,6 +253,7 @@ if __name__ == '__main__':
         ax.set_title('rmsd')
         wandb.log({'rmsd':wandb.Image(fig)})
         plt.close()
+        
     wandb.finish()
 
 
