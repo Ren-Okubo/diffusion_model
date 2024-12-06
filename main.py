@@ -238,24 +238,27 @@ if __name__ == '__main__':
             third_min_rmsd_data = sorted_id_rmsd_original_generated_list[2]
             mid_rmsd_data = sorted_id_rmsd_original_generated_list[int(len(sorted_id_rmsd_original_generated_list)/2)]
             max_rmad_data = sorted_id_rmsd_original_generated_list[-1]
-            write_xyz(os.path.join(run.dir,'first_min_rmsd.xyz'),first_min_rmsd_data[2],first_min_rmsd_data[3],comment='first_min_rmsd ' + str(first_min_rmsd_data[0]))
-            write_xyz(os.path.join(run.dir,'second_min_rmsd.xyz'),second_min_rmsd_data[2],second_min_rmsd_data[3],comment='second_min_rmsd ' + str(second_min_rmsd_data[0]))
-            write_xyz(os.path.join(run.dir,'third_min_rmsd.xyz'),third_min_rmsd_data[2],third_min_rmsd_data[3],comment='third_min_rmsd ' + str(third_min_rmsd_data[0]))
-            write_xyz(os.path.join(run.dir,'mid_rmsd.xyz'),mid_rmsd_data[2],mid_rmsd_data[3],comment='mid_rmsd ' + str(mid_rmsd_data[0]))
-            write_xyz(os.path.join(run.dir,'max_rmsd.xyz'),max_rmad_data[2],max_rmad_data[3],comment='max_rmsd ' + str(max_rmad_data[0]))
+            write_xyz(os.path.join(run.dir,'first_min_rmsd.xyz'),first_min_rmsd_data[2],first_min_rmsd_data[3],comment='first_min_rmsd ' + str(first_min_rmsd_data[0]) + ' rmsd: ' + str(first_min_rmsd_data[1].item()))
+            write_xyz(os.path.join(run.dir,'second_min_rmsd.xyz'),second_min_rmsd_data[2],second_min_rmsd_data[3],comment='second_min_rmsd ' + str(second_min_rmsd_data[0]) + ' rmsd: ' + str(second_min_rmsd_data[1].item()))
+            write_xyz(os.path.join(run.dir,'third_min_rmsd.xyz'),third_min_rmsd_data[2],third_min_rmsd_data[3],comment='third_min_rmsd ' + str(third_min_rmsd_data[0]) + ' rmsd: ' + str(third_min_rmsd_data[1].item()))
+            write_xyz(os.path.join(run.dir,'mid_rmsd.xyz'),mid_rmsd_data[2],mid_rmsd_data[3],comment='mid_rmsd ' + str(mid_rmsd_data[0]) + ' rmsd: ' + str(mid_rmsd_data[1].item()))
+            write_xyz(os.path.join(run.dir,'max_rmsd.xyz'),max_rmad_data[2],max_rmad_data[3],comment='max_rmsd ' + str(max_rmad_data[0]) + ' rmsd: ' + str(max_rmad_data[1].item()))
             wandb.config.update({'rmsd_xyz_path':run.dir})
 
     #noise_scheduleの記録
     if args.record_schedule:
         fig_alpha = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'alpha')
         fig_sigma = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'sigma')
-        fig_gamma = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'gamma')
         fig_SNR = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'SNR')
-        wandb.log({'alpha':wandb.Image(fig_alpha),'sigma':wandb.Image(fig_sigma),'gamma':wandb.Image(fig_gamma),'SNR':wandb.Image(fig_SNR)})
+        if prms['noise_schedule'] == 'learned':
+            fig_gamma = noise_schedule_for_GammaNetwork(run.config.model_save_path,prms,'gamma')
+            wandb.log({'alpha':wandb.Image(fig_alpha),'sigma':wandb.Image(fig_sigma),'gamma':wandb.Image(fig_gamma),'SNR':wandb.Image(fig_SNR)})
+            plt.close(fig_gamma)
+        elif prms['noise_schedule'] == 'predefined':
+            wandb.log({'alpha':wandb.Image(fig_alpha),'sigma':wandb.Image(fig_sigma),'SNR':wandb.Image(fig_SNR)})
         print('noise_schedule saved')
         plt.close(fig_alpha)
         plt.close(fig_sigma)
-        plt.close(fig_gamma)
         plt.close(fig_SNR)
 
     #wandbの終了
