@@ -20,7 +20,7 @@ from make_xyz_from_wandb_run import write_xyz
 sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
 from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
 from loss_calculation import kabsch_torch
-from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork
+from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork, evaluate_by_rmsd_and_atom_type_score
 
 
 if __name__ == '__main__':
@@ -108,6 +108,12 @@ if __name__ == '__main__':
         spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
     early_stopping = EarlyStopping(patience=patience)
     setupdata = SetUpData(seed=seed,conditional=conditional)    
+
+    #使用するモデルをまとめた辞書nn_dictを定義
+    if to_compress_spectrum:
+        nn_dict = {'egnn':egnn,'spectrum_compressor':spectrum_compressor}
+    else:
+        nn_dict = {'egnn':egnn,'spectrum_compressor':None}
     
     #datasetの読み込み
     dataset_path = args.dataset_path
@@ -210,6 +216,7 @@ if __name__ == '__main__':
 
     #生成したデータの評価
     if conditional:
+        
         #生成したグラフのrmsdを計算し、ソート
         sorted_id_rmsd_original_generated_list = evaluate_by_rmsd(original_graph_list,generated_graph_list)
         
@@ -225,12 +232,29 @@ if __name__ == '__main__':
         fig, ax = plt.subplots()
         ax.plot(sorted_rmsd_list)
         ax.set_xlabel('sorted_index')
-        ax.set_ylabel('log rmsd')
+        ax.set_ylabel('rmsd')
         ax.set_yscale('log')
         ax.set_title('rmsd')
         wandb.log({'rmsd':wandb.Image(fig)})
         plt.close()
+        
+        #生成したグラフのrmsd,atom_type_scoreを計算し、ソート
+        sorted_id_rmsd_atomscore_original_generated_list = evaluate_by_rmsd_and_atom_type_score(original_graph_list,generated_graph_list)
 
+        soretd_id_list, sorted_rmsd_list, sorted_atom_type_score_list, sorted_original_graph_list, sorted_generated_graph_list = zip(*sorted_id_rmsd_atomscore_original_generated_list)
+        sorted_rmsd_list = torch.tensor(sorted_rmsd_list).cpu().numpy()
+        sorted_atom_type_score_list = torch.tensor(sorted_atom_type_score_list).cpu().numpy()
+        fig, ax = plt.subplots()
+        ax.plot(sorted_rmsd_list,sorted_atom_type_score_list,'o')
+        ax.set_xlabel('rmsd')
+        ax.set_ylabel('atom_type_score')
+        ax.set_xscale('log')
+        ax.set_title('rmsd and atom_type_score')
+        wandb.log({'rmsd_and_atom_type_score':wandb.Image(fig)})
+        plt.close()
+
+        
+        
         #xyzファイルの作成
         if args.create_xyz_file:
             first_min_rmsd_data = sorted_id_rmsd_original_generated_list[0]
@@ -244,6 +268,7 @@ if __name__ == '__main__':
             write_xyz(os.path.join(run.dir,'mid_rmsd.xyz'),mid_rmsd_data[2],mid_rmsd_data[3],comment='mid_rmsd ' + str(mid_rmsd_data[0]) + ' rmsd: ' + str(mid_rmsd_data[1].item()))
             write_xyz(os.path.join(run.dir,'max_rmsd.xyz'),max_rmad_data[2],max_rmad_data[3],comment='max_rmsd ' + str(max_rmad_data[0]) + ' rmsd: ' + str(max_rmad_data[1].item()))
             wandb.config.update({'rmsd_xyz_path':run.dir})
+            print('xyz file created')
 
     #noise_scheduleの記録
     if args.record_schedule:
