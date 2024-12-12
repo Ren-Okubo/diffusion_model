@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from diffusion_x_h import E3DiffusionProcess, remove_mean
 import os
 from loss_calculation import kabsch_torch
+from schedulefree import RAdamScheduleFree
 
 def noise_schedule_for_GammaNetwork(model_state_path,params,target:str):
     assert target in ['gamma','alpha','sigma','SNR'], 'target must be one of gamma, alpha, sigma, or SNR'
@@ -113,29 +114,23 @@ def evaluate_by_rmsd_and_atom_type_score(original_graph_list,generated_graph_lis
     return sorted_id_rmsd_atomscore_original_generated_list
 
 def define_optimizer(params,nn_dict,diffusion_process,optim_type:str):
-    assert optim_type in ['Adam','AdamW']
+    assert optim_type in ['Adam','AdamW','RAdamScheduleFree']
     lr = params['lr']
     weight_decay = params['weight_decay']
+    if params['to_compress_spectrum']:
+        if params['noise_schedule'] == 'learned':
+            param_list_for_optim = list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters())+list(diffusion_process.parameters())
+        else:
+            param_list_for_optim = list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters())
+    else:
+        if params['noise_schedule'] == 'learned':
+            param_list_for_optim = list(nn_dict['egnn'].parameters())+list(diffusion_process.parameters())
+        else:
+            param_list_for_optim = list(nn_dict['egnn'].parameters())
     if optim_type == 'Adam':
-        if params['to_compress_spectrum']:
-            if params['noise_schedule'] == 'learned':
-                optimizer = torch.optim.Adam(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay)
-            else:
-                optimizer = torch.optim.Adam(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters()),lr=lr,weight_decay=weight_decay)
-        else:
-            if params['noise_schedule'] == 'learned':
-                optimizer = torch.optim.Adam(list(nn_dict['egnn'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay)
-            else:
-                optimizer = torch.optim.Adam(list(nn_dict['egnn'].parameters()),lr=lr,weight_decay=weight_decay)
+        optimizer = torch.optim.Adam(param_list_for_optim,lr=lr,weight_decay=weight_decay)
     elif optim_type == 'AdamW':
-        if params['to_compress_spectrum']:
-            if params['noise_schedule'] == 'learned':
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
-            else:
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
-        else:
-            if params['noise_schedule'] == 'learned':
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
-            else:
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
+        optimizer = torch.optim.AdamW(param_list_for_optim,lr=lr,weight_decay=weight_decay,amsgrad=True)
+    elif optim_type == 'RAdamScheduleFree':
+        optimizer = RAdamScheduleFree(param_list_for_optim,lr=lr)
     return optimizer

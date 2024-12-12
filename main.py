@@ -16,6 +16,7 @@ from diffusion_x_h import E3DiffusionProcess
 from split_to_train_and_test import SetUpData
 from DataPreprocessor import SpectrumCompressor
 from make_xyz_from_wandb_run import write_xyz
+from schedulefree import RAdamScheduleFree
 
 sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
 from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
@@ -31,6 +32,7 @@ if __name__ == '__main__':
     parser.add_argument('--record_schedule',type=bool,default=True)
     parser.add_argument('--create_xyz_file',type=bool,default=True)
     parser.add_argument('--note',type=str,default=None)
+    parser.add_argument('--give_whether_exO',type=bool,default=False)
     args = parser.parse_args()
 
     #parameterの読み込み
@@ -61,6 +63,7 @@ if __name__ == '__main__':
     #optimizerのパラメータ
     lr = prms['lr']
     weight_decay = prms['weight_decay']
+    optim_type = prms['optimizer']
     #early stoppingのパラメータ
     patience = prms['patience']
     #diffusion_processのパラメータ
@@ -78,6 +81,7 @@ if __name__ == '__main__':
     spectrum_size = prms['spectrum_size']
     d_size = prms['d_size']
     t_size = prms['t_size']
+    exO_size = prms['exO_size']
     if conditional:
         if prms['to_compress_spectrum']:
             h_size = atom_type_size + compressed_spectrum_size + t_size
@@ -85,6 +89,8 @@ if __name__ == '__main__':
             h_size = atom_type_size + spectrum_size + t_size
     else:
         h_size = atom_type_size + t_size
+    if prms['give_exO']:
+        h_size = h_size + exO_size
     x_size = prms['x_size']
     m_size = prms['m_size']   
     m_input_size = h_size + h_size + d_size
@@ -148,7 +154,7 @@ if __name__ == '__main__':
 
     #optimizerの設定
 
-    optimizer = define_optimizer(prms,nn_dict,diffusion_process,optim_type='AdamW')
+    optimizer = define_optimizer(prms,nn_dict,diffusion_process,optim_type=optim_type)
 
 
     if "train" in args.mode:

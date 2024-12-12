@@ -100,6 +100,8 @@ def train_epoch(nn_dict,train_loader,params,diffusion_process,optimizer):
     egnn = nn_dict['egnn']
     egnn.train()
     egnn.to('cuda')
+    if params['optimizer'] == 'RAdamScheduleFree':
+        optimizer.train()
     criterion = nn.MSELoss(reduction='sum')
 
     if params['to_compress_spectrum']:
@@ -130,7 +132,23 @@ def train_epoch(nn_dict,train_loader,params,diffusion_process,optimizer):
         #時間のデータをnum_diffusion_timestepで正規化
         time_data = train_data.each_time_list / num_diffusion_timestep
 
+        #egnnに渡すhのデータを定義
+        h_for_input = train_data.h_at_t.to('cuda')
+        if conditional:
+            if params['to_compress_spectrum']:
+                compressed_spectrum = spectrum_compressor(train_data.spectrum.to('cuda'))
+                h_for_input = torch.cat((h_for_input,compressed_spectrum.to('cuda')),dim=1).to('cuda')
+            else:
+                h_for_input = torch.cat((h_for_input,train_data.spectrum.to('cuda')),dim=1).to('cuda')
+        if params['give_exO']:
+            h_for_input = torch.cat((h_for_input,train_data.exO.to('cuda')),dim=1)
+        h_for_input = torch.cat((h_for_input,time_data.to('cuda')),dim=1)
+        
+        
+
         #equivariant graph neural networkによる予測
+        h, x = egnn(train_data.edge_index.to('cuda'),h_for_input,train_data.pos_at_t.to('cuda'))
+        """
         if conditional:
             if params['to_compress_spectrum']:
                 compressed_spectrum = spectrum_compressor(train_data.spectrum.to('cuda'))
@@ -139,6 +157,7 @@ def train_epoch(nn_dict,train_loader,params,diffusion_process,optimizer):
                 h, x = egnn(train_data.edge_index.to('cuda'),torch.cat((train_data.h_at_t.to('cuda'),train_data.spectrum.to('cuda'),time_data.to('cuda')),dim=1).to('cuda'),train_data.pos_at_t.to('cuda'))
         else:
             h, x = egnn(train_data.edge_index.to('cuda'),torch.cat((train_data.h_at_t.to('cuda'),time_data.to('cuda')),dim=1).to('cuda'),train_data.pos_at_t.to('cuda'))
+        """
         epsilon_x = x - train_data.pos_at_t
         epsilon_x = remove_mean(epsilon_x,graph_index)
         epsilon_h = h[:,:atom_type_size] #atom_typeの部分のみを取り出す
@@ -167,6 +186,8 @@ def eval_epoch(nn_dict,eval_loader,params,diffusion_process):
     egnn = nn_dict['egnn']
     egnn.eval()
     egnn.to('cuda')
+    if params['optimizer'] == 'RAdamScheduleFree':
+        optimizer.eval()
     criterion = nn.MSELoss(reduction='sum')
 
     if params['to_compress_spectrum']:
@@ -197,7 +218,23 @@ def eval_epoch(nn_dict,eval_loader,params,diffusion_process):
             #時間のデータをnum_diffusion_timestepで正規化
             time_data = val_data.each_time_list / num_diffusion_timestep
 
+            #egnnに渡すのデータを定義
+            h_for_input = val_data.h_at_t.to('cuda')
+            if conditional:
+                if params['to_compress_spectrum']:
+                    compressed_spectrum = spectrum_compressor(val_data.spectrum.to('cuda'))
+                    h_for_input = torch.cat((h_for_input,compressed_spectrum.to('cuda')),dim=1).to('cuda')
+                else:
+                    h_for_input = torch.cat((h_for_input,val_data.spectrum.to('cuda')),dim=1).to('cuda')
+            if params['give_exO']:
+                h_for_input = torch.cat((h_for_input,val_data.exO.to('cuda')),dim=1)
+            h_for_input = torch.cat((h_for_input,time_data.to('cuda')),dim=1)
+            
+            
+
             #equivariant graph neural networkによる予測
+            h, x = egnn(val_data.edge_index.to('cuda'),h_for_input,val_data.pos_at_t.to('cuda'))
+            """
             if conditional:
                 if params['to_compress_spectrum']:
                     compressed_spectrum = spectrum_compressor(val_data.spectrum.to('cuda'))
@@ -206,9 +243,11 @@ def eval_epoch(nn_dict,eval_loader,params,diffusion_process):
                     h, x = egnn(val_data.edge_index,torch.cat((val_data.h_at_t,val_data.spectrum,time_data),dim=1),val_data.pos_at_t)
             else:
                 h, x = egnn(val_data.edge_index,torch.cat((val_data.h_at_t,time_data),dim=1),val_data.pos_at_t)
+            """
             epsilon_x = x - val_data.pos_at_t
             epsilon_x = remove_mean(epsilon_x,graph_index)
             epsilon_h = h[:,:atom_type_size] #atom_typeの部分のみを取り出す
+            
 
             #lossの計算
             predicted_epsilon = torch.cat((epsilon_x,epsilon_h),dim=1)
@@ -273,10 +312,8 @@ def generate(nn_dict,test_data,params,diffusion_process):
                 edge_index = torch.tensor(edge_index,dtype=torch.long).t().contiguous()
 
                 #初期値をData型に変換
-                if conditional:
-                    graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos,spectrum=data.spectrum)
-                else:
-                    graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos)
+                graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos,spectrum=data.spectrum,exO=data.exO)
+
                 
                 #100stepごとのデータを格納するリスト
                 transition_data_per_100step = []
@@ -290,6 +327,17 @@ def generate(nn_dict,test_data,params,diffusion_process):
                     time_tensor = torch.tensor([[t/num_diffusion_timestep] for d in range(num_of_atoms)],dtype=torch.float32)
 
                     #特徴量ベクトルの定義
+                    graph.h = onehot_scaling_factor*graph.x
+                    if conditional:
+                        if params['to_compress_spectrum']:
+                            compressed_spectrum = spectrum_compressor(graph.spectrum)
+                            graph.h = torch.cat((graph.h,compressed_spectrum),dim=1)
+                        else:
+                            graph.h = torch.cat((graph.h,graph.spectrum),dim=1)
+                    if params['give_exO']:
+                        graph.h = torch.cat((graph.h,graph.exO),dim=1)
+                    graph.h = torch.cat((graph.h,time_tensor),dim=1)
+                    """ 
                     if conditional:
                         if params['to_compress_spectrum']:
                             compressed_spectrum = spectrum_compressor(graph.spectrum)
@@ -298,7 +346,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
                             graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
                     else:
                         graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
-                    
+                    """
                     #equivariant graph neural networkによる予測
                     new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
                     
@@ -330,6 +378,17 @@ def generate(nn_dict,test_data,params,diffusion_process):
                         break
                 
                 time_tensor = torch.tensor([[0] for d in range(num_of_atoms)],dtype=torch.float32)
+                graph.h = onehot_scaling_factor*graph.x
+                if conditional:
+                    if params['to_compress_spectrum']:
+                        compressed_spectrum = spectrum_compressor(graph.spectrum)
+                        graph.h = torch.cat((graph.h,compressed_spectrum),dim=1)
+                    else:
+                        graph.h = torch.cat((graph.h,graph.spectrum),dim=1)
+                if params['give_exO']:
+                    graph.h = torch.cat((graph.h,graph.exO),dim=1)
+                graph.h = torch.cat((graph.h,time_tensor),dim=1)
+                """
                 if conditional:
                     if params['to_compress_spectrum']:
                         compressed_spectrum = spectrum_compressor(graph.spectrum)
@@ -338,6 +397,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
                         graph.h = torch.cat((onehot_scaling_factor*graph.x,graph.spectrum,time_tensor),dim=1)
                 else:
                     graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
+                """
                 new_h, new_x = egnn(graph.edge_index,graph.h,graph.pos)
                 epsilon_x = remove_mean(new_x - graph.pos)
                 graph.h = graph.h[:,:atom_type_size]
