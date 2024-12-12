@@ -161,7 +161,7 @@ if __name__ == '__main__':
         #train,eval
         for epoch in range(num_epochs):
             avg_loss_train = train_epoch(nn_dict,train_loader,prms,diffusion_process,optimizer)
-            avg_loss_eval = eval_epoch(nn_dict,eval_loader,prms,diffusion_process)
+            avg_loss_eval = eval_epoch(nn_dict,eval_loader,prms,diffusion_process,optimizer)
 
             #各epochにおけるlossを記録
             print(f'epoch:{epoch}    train_loss:{avg_loss_train}     eval_loss:{avg_loss_eval}')

@@ -182,7 +182,7 @@ def train_epoch(nn_dict,train_loader,params,diffusion_process,optimizer):
 
     return avg_loss_train
 
-def eval_epoch(nn_dict,eval_loader,params,diffusion_process):
+def eval_epoch(nn_dict,eval_loader,params,diffusion_process,optimizer):
     egnn = nn_dict['egnn']
     egnn.eval()
     egnn.to('cuda')
