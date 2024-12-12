@@ -130,12 +130,12 @@ def define_optimizer(params,nn_dict,diffusion_process,optim_type:str):
     elif optim_type == 'AdamW':
         if params['to_compress_spectrum']:
             if params['noise_schedule'] == 'learned':
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay)
+                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
             else:
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters()),lr=lr,weight_decay=weight_decay)
+                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(nn_dict['spectrum_compressor'].parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
         else:
             if params['noise_schedule'] == 'learned':
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay)
+                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
             else:
-                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters()),lr=lr,weight_decay=weight_decay)
+                optimizer = torch.optim.AdamW(list(nn_dict['egnn'].parameters()),lr=lr,weight_decay=weight_decay,amsgrad=True)
     return optimizer

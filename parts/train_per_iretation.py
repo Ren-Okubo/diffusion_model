@@ -242,6 +242,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
     spectrum_size = params['spectrum_size']
     onehot_scaling_factor = params['onehot_scaling_factor']
 
+    
     original_graph_list ,generated_graph_list = [],[]
 
     with torch.no_grad():
@@ -365,6 +366,8 @@ def generate(nn_dict,test_data,params,diffusion_process):
 
                     if conditional:
                         original_graph_list.append(data)
+                    else:
+                        original_graph_list.append(-1)
                     generated_graph_list.append(transition_data_per_100step)
                 
     return original_graph_list,generated_graph_list
@@ -378,6 +381,3 @@ def generate(nn_dict,test_data,params,diffusion_process):
 
         
         
-
-
-

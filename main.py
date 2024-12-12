@@ -20,7 +20,7 @@ from make_xyz_from_wandb_run import write_xyz
 sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
 from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
 from loss_calculation import kabsch_torch
-from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork, evaluate_by_rmsd_and_atom_type_score
+from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork, evaluate_by_rmsd_and_atom_type_score, define_optimizer
 
 
 if __name__ == '__main__':
@@ -30,6 +30,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode',type=str,default='train_and_generate') #train_and_generate, train_only, generate_only, evaluate_only
     parser.add_argument('--record_schedule',type=bool,default=True)
     parser.add_argument('--create_xyz_file',type=bool,default=True)
+    parser.add_argument('--note',type=str,default=None)
     args = parser.parse_args()
 
     #parameterの読み込み
@@ -46,6 +47,10 @@ if __name__ == '__main__':
     elif args.mode == 'generate_only' or args.mode == 'evaluate_only':
         run_id = input('run_id:')
         run = wandb.init(project=args.project_name,config=prms,id=run_id,resume='must')
+
+    #メモがあればnoteに記録
+    if args.note:
+        wandb.run.notes = args.note
 
     #パラメータの設定
     #全体のパラメータ
@@ -142,21 +147,10 @@ if __name__ == '__main__':
 
 
     #optimizerの設定
-    if to_compress_spectrum:
-        if noise_schedule == 'learned':
-            optimizer = torch.optim.Adam(list(egnn.parameters())+list(spectrum_compressor.parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay)
-            nn_dict = {'egnn':egnn,'spectrum_compressor':spectrum_compressor}
-        else:
-            optimizer = torch.optim.Adam(list(egnn.parameters())+list(spectrum_compressor.parameters()),lr=lr,weight_decay=weight_decay)
-            nn_dict = {'egnn':egnn,'spectrum_compressor':spectrum_compressor}
-    else:
-        if noise_schedule == 'learned':
-            optimizer = torch.optim.Adam(list(egnn.parameters())+list(diffusion_process.parameters()),lr=lr,weight_decay=weight_decay)
-            nn_dict = {'egnn':egnn,'specturm_compressor':None}
-        else:
-            optimizer = torch.optim.Adam(list(egnn.parameters()),lr=lr,weight_decay=weight_decay)
-            nn_dict = {'egnn':egnn,'spectrum_compressor':None}
-    
+
+    optimizer = define_optimizer(prms,nn_dict,diffusion_process,optim_type='AdamW')
+
+
     if "train" in args.mode:
         #train,eval
         for epoch in range(num_epochs):
@@ -230,7 +224,7 @@ if __name__ == '__main__':
         sorted_id_list, sorted_rmsd_list,sorted_original_graph_list,sorted_generated_graph_list = zip(*sorted_id_rmsd_original_generated_list)
         sorted_rmsd_list = torch.tensor(sorted_rmsd_list).cpu().numpy()
         fig, ax = plt.subplots()
-        ax.plot(sorted_rmsd_list)
+        ax.plot(sorted_rmsd_list,marker='o',linestyle='None')
         ax.set_xlabel('sorted_index')
         ax.set_ylabel('rmsd')
         ax.set_yscale('log')
