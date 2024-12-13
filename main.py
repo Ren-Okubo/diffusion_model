@@ -17,6 +17,8 @@ from split_to_train_and_test import SetUpData
 from DataPreprocessor import SpectrumCompressor
 from make_xyz_from_wandb_run import write_xyz
 from schedulefree import RAdamScheduleFree
+import torch_geometric.datasets as datasets
+from torch.utils.data import random_split
 
 sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
 from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
@@ -33,6 +35,7 @@ if __name__ == '__main__':
     parser.add_argument('--create_xyz_file',type=bool,default=True)
     parser.add_argument('--note',type=str,default=None)
     parser.add_argument('--give_whether_exO',type=bool,default=False)
+    parser.add_argument('--test_by_provided_data',type=str,default=None)
     args = parser.parse_args()
 
     #parameterの読み込み
@@ -77,7 +80,12 @@ if __name__ == '__main__':
     compressed_spectrum_size = prms['compressed_spectrum_size']
     #egnnのパラメータ
     L = prms['L']
-    atom_type_size = prms['atom_type_size']
+    if args.test_by_provided_data is None:
+        atom_type_size = prms['atom_type_size']
+    elif args.test_by_provided_data == 'QM9':
+        atom_type_size = 5
+        prms['atom_type_size'] = 5
+        wandb.config.update({'atom_type_size':5},allow_val_change=True)
     spectrum_size = prms['spectrum_size']
     d_size = prms['d_size']
     t_size = prms['t_size']
@@ -127,15 +135,22 @@ if __name__ == '__main__':
         nn_dict = {'egnn':egnn,'spectrum_compressor':None}
     
     #datasetの読み込み
-    dataset_path = args.dataset_path
-    dataset = torch.load(dataset_path)
-    wandb.config.update({'dataset_path':dataset_path})
+    if args.test_by_provided_data is None:
+        dataset_path = args.dataset_path
+        dataset = torch.load(dataset_path)
+        wandb.config.update({'dataset_path':dataset_path})
+        for data in dataset: #spectrumサイズの設定（-1~19eVがデフォルト）
+            spectrum = data.spectrum
+            resized_spectrum = spectrum[:,:spectrum_size]
+            data.spectrum = resized_spectrum
+    elif args.test_by_provided_data == 'QM9': #QM9のデータセットを使う場合
+        dataset = datasets.QM9('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/QM9/')
+        subset, _ = random_split(dataset,[10000,len(dataset)-10000],generator=torch.Generator(device='cuda'))
+        dataset = list(subset)
+        for data in dataset:
+            data.x = data.x[:,:5] #qm9のデータからatom_typeのみを取り出す
+        wandb.config.update({'dataset_path':'QM9'})
 
-    #spectrumサイズの設定（-1~19eVがデフォルト）
-    for data in dataset:
-        spectrum = data.spectrum
-        resized_spectrum = spectrum[:,:spectrum_size]
-        data.spectrum = resized_spectrum
 
     # デバイスの設定
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

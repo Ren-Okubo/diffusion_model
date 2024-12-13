@@ -312,7 +312,13 @@ def generate(nn_dict,test_data,params,diffusion_process):
                 edge_index = torch.tensor(edge_index,dtype=torch.long).t().contiguous()
 
                 #初期値をData型に変換
-                graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos,spectrum=data.spectrum,exO=data.exO)
+                if conditional:
+                    if params['give_exO']:
+                        graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos,spectrum=data.spectrum,exO=data.exO)
+                    else:
+                        graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos,spectrum=data.spectrum)
+                else:
+                    graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos)
 
                 
                 #100stepごとのデータを格納するリスト
