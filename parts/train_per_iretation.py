@@ -102,7 +102,7 @@ def train_epoch(nn_dict,train_loader,params,diffusion_process,optimizer):
     egnn.to('cuda')
     if params['optimizer'] == 'RAdamScheduleFree':
         optimizer.train()
-    criterion = nn.MSELoss(reduction='sum')
+    criterion = nn.MSELoss(reduction='mean')
 
     if params['to_compress_spectrum']:
         spectrum_compressor = nn_dict['spectrum_compressor']
@@ -188,7 +188,7 @@ def eval_epoch(nn_dict,eval_loader,params,diffusion_process,optimizer):
     egnn.to('cuda')
     if params['optimizer'] == 'RAdamScheduleFree':
         optimizer.eval()
-    criterion = nn.MSELoss(reduction='sum')
+    criterion = nn.MSELoss(reduction='mean')
 
     if params['to_compress_spectrum']:
         spectrum_compressor = nn_dict['spectrum_compressor']
