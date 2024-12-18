@@ -9,11 +9,12 @@ class EGCL(MessagePassing):
                  h_input,h_hidden,h_output,
                  flow='target_to_source',aggr='sum',activation='SiLU'):
         super(EGCL,self).__init__(aggr=aggr,flow=flow)
-        """
+        
         self.mlp_m = nn.Sequential(
             nn.Linear(m_input,m_hidden),
             nn.SiLU(),
-            nn.Linear(m_hidden,m_output)
+            nn.Linear(m_hidden,m_output),
+            nn.SiLU()
             )
         self.mlp_x = nn.Sequential(
             nn.Linear(x_input,x_hidden),
@@ -37,6 +38,7 @@ class EGCL(MessagePassing):
             nn.Linear(m_output,1),
             nn.Sigmoid()
         )
+        """
     def _build_mlp(self,input_dim,hidden_dim,output_dim):
         mlp = []
         mlp.append(nn.Linear(input_dim,hidden_dim[0]))
