@@ -16,6 +16,7 @@ from E3diffusion_new import E3DiffusionProcess, remove_mean
 from CN2_evaluate import calculate_angle_for_CN2
 from DataPreprocessor import SpectrumCompressor
 import wandb
+import argparse
 
 class EarlyStopping():
     def __init__(self, patience=0):
@@ -42,6 +43,10 @@ if __name__ == "__main__":
 
     torch.autograd.set_detect_anomaly(True)
 
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('output_each_epoch',type=bool,default=True)
+    args = argparser.parse_args()
+
     with open('parameters.yaml','r') as file:
         params = yaml.safe_load(file)
 
@@ -54,7 +59,7 @@ if __name__ == "__main__":
         del params['noise_precision']
         del params['noise_schedule_power']
 
-    wandb.init(project='resized_spectrum_new',config=params,name='conditional dataset only CN2 except 180')
+    wandb.init(project='adjusted dataset',config=params,name='conditional hidden 512 patience 200 batch 2 compress')
     
     seed = params['seed']
     random.seed(seed)
@@ -296,7 +301,8 @@ if __name__ == "__main__":
         epoch_list.append(epoch)
         loss_list_val.append(avg_loss_val)
         loss_list_train.append(avg_loss_train)
-        print("epoch : ",epoch,"    loss_train : ",avg_loss_train,"    loss_val : ",avg_loss_val)
+        if args.output_each_epoch:
+            print("epoch : ",epoch,"    loss_train : ",avg_loss_train,"    loss_val : ",avg_loss_val)
         wandb.log({"loss_train":avg_loss_train,"loss_val":avg_loss_val})
         if early_stopping.validate(avg_loss_train):
             break

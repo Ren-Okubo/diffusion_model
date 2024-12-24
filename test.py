@@ -130,7 +130,8 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
 
-    model_path = 'egnn_202411291301'
+    #model_path = 'egnn_202412201607'
+    model_path = str(input('model_path: '))
 
     state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
@@ -208,6 +209,8 @@ if __name__ == '__main__':
                     atom_type.append([0,1])
                 x = torch.tensor(atom_type,dtype=torch.float32).to(device)
                 graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=data.spectrum.to(device))#
+                #test_spectrum = torch.zeros((num_atom,data.spectrum.shape[1])).to(device)
+                #graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=test_spectrum)#
 
                 graph.node = graph.pos
 
@@ -289,8 +292,8 @@ if __name__ == '__main__':
             np.random.seed(seed_value)
             random.seed(seed_value)
             #data = train_data[913]
-            #data = test_data[9]  #
-            num_atom = data.spectrum.shape[0] #
+            data = test_data[9]  #
+            num_atom = data.pos.shape[0] #
 
 
             edge_index = []
