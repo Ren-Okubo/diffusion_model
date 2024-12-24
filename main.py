@@ -28,14 +28,14 @@ from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--project_name',type=str,default='diffusion_first_nearest')
+    parser.add_argument('--project_name',type=str,default='diffusion_first_nearest_loss_per_atom')
     parser.add_argument('--dataset_path',type=str,default='/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset.pt')
     parser.add_argument('--mode',type=str,default='train_and_generate') #train_and_generate, train_only, generate_only, evaluate_only
     parser.add_argument('--record_schedule',type=bool,default=True)
     parser.add_argument('--create_xyz_file',type=bool,default=True)
     parser.add_argument('--note',type=str,default=None)
     parser.add_argument('--give_whether_exO',type=bool,default=False)
-    parser.add_argument('--test_by_provided_data',type=str,default=None)
+    parser.add_argument('--test_by_provided_data',type=str,default=None) #"QM9" or None
     args = parser.parse_args()
 
     #parameterの読み込み
@@ -147,6 +147,7 @@ if __name__ == '__main__':
         dataset = datasets.QM9('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/QM9/')
         subset, _ = random_split(dataset,[10000,len(dataset)-10000],generator=torch.Generator(device='cuda'))
         dataset = list(subset)
+        #dataset = list(dataset)
         for data in dataset:
             data.x = data.x[:,:5] #qm9のデータからatom_typeのみを取り出す
         wandb.config.update({'dataset_path':'QM9'})

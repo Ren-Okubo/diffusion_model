@@ -102,7 +102,7 @@ def train_epoch(nn_dict,train_loader,params,diffusion_process,optimizer):
     egnn.to('cuda')
     if params['optimizer'] == 'RAdamScheduleFree':
         optimizer.train()
-    criterion = nn.MSELoss(reduction='mean')
+    criterion = nn.MSELoss(reduction='sum')
 
     if params['to_compress_spectrum']:
         spectrum_compressor = nn_dict['spectrum_compressor']
@@ -363,7 +363,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
 
                     #逆拡散
                     graph.pos = diffusion_process.reverse_diffuse_one_step(graph.pos,epsilon_x,t,mode='pos')
-                    graph.x = diffusion_process.reverse_diffuse_one_step(graph.h[:,:2],epsilon_h,t,mode='h')
+                    graph.x = diffusion_process.reverse_diffuse_one_step(graph.h[:,:atom_type_size],epsilon_h,t,mode='h')
 
                     #nanが出力されていないかの確認
                     if not torch.isfinite(graph.x).all():
