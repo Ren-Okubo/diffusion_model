@@ -29,10 +29,11 @@ from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--project_name',type=str,default='diffusion_first_nearest_loss_per_atom')
+    parser.add_argument('--run_name',type=str,default=None)
     parser.add_argument('--dataset_path',type=str,default='/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset.pt')
     parser.add_argument('--mode',type=str,default='train_and_generate') #train_and_generate, train_only, generate_only, evaluate_only
-    parser.add_argument('--record_schedule',type=bool,default=True)
-    parser.add_argument('--create_xyz_file',type=bool,default=True)
+    parser.add_argument('--record_schedule',type=bool,default=False)
+    parser.add_argument('--create_xyz_file',type=bool,default=False)
     parser.add_argument('--note',type=str,default=None)
     parser.add_argument('--give_whether_exO',type=bool,default=False)
     parser.add_argument('--test_by_provided_data',type=str,default=None) #"QM9" or None
@@ -48,10 +49,11 @@ if __name__ == '__main__':
     #wandbの設定
     assert args.mode in ['train_and_generate','train_only','generate_only','evaluate_only']
     if args.mode == 'train_and_generate' or args.mode == 'train_only':
-        run = wandb.init(project=args.project_name,config=prms)
+        run = wandb.init(project=args.project_name,config=prms,name=args.run_name)
     elif args.mode == 'generate_only' or args.mode == 'evaluate_only':
         run_id = input('run_id:')
-        run = wandb.init(project=args.project_name,config=prms,id=run_id,resume='must')
+        run = wandb.init(project=args.project_name,id=run_id,name=args.run_name,resume='must')
+        prms = run.config
 
     #メモがあればnoteに記録
     if args.note:

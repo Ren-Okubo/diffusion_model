@@ -188,7 +188,7 @@ def eval_epoch(nn_dict,eval_loader,params,diffusion_process,optimizer):
     egnn.to('cuda')
     if params['optimizer'] == 'RAdamScheduleFree':
         optimizer.eval()
-    criterion = nn.MSELoss(reduction='mean')
+    criterion = nn.MSELoss(reduction='sum')
 
     if params['to_compress_spectrum']:
         spectrum_compressor = nn_dict['spectrum_compressor']
@@ -312,6 +312,12 @@ def generate(nn_dict,test_data,params,diffusion_process):
                 edge_index = torch.tensor(edge_index,dtype=torch.long).t().contiguous()
 
                 #初期値をData型に変換
+                graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos)
+                if conditional:
+                    graph.spectrum = data.spectrum
+                if params['give_exO']:
+                    graph.exO = data.exO
+                """
                 if conditional:
                     if params['give_exO']:
                         graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos,spectrum=data.spectrum,exO=data.exO)
@@ -319,7 +325,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
                         graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos,spectrum=data.spectrum)
                 else:
                     graph = Data(x=initial_h,edge_index=edge_index,pos=initial_pos)
-
+                """
                 
                 #100stepごとのデータを格納するリスト
                 transition_data_per_100step = []
