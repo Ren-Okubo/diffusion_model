@@ -57,14 +57,14 @@ def diffuse_as_batch(batch_data,graph_index,params,diffusion_process:E3Diffusion
 
         #posの拡散
         pos_before_dif = batch_data.pos[graph_index==i]
-        pos_after_dif, noise_pos = diffusion_process.diffuse_zero_to_t(pos_before_dif,time)
+        pos_after_dif, noise_pos = diffusion_process.diffuse_zero_to_t(pos_before_dif,time,mode='pos')
         pos_before_diffusion.append(pos_before_dif)
         pos_after_diffusion.append(pos_after_dif)
         y_for_noise_pos.append(noise_pos)
 
         #hの拡散 hは連結によって元素種、spectrum、時間の情報を持つが拡散させるのは元素種のみ
         x_before_dif = batch_data.x[graph_index==i]
-        h_after_dif, noise_h = diffusion_process.diffuse_zero_to_t(x_before_dif,time)
+        h_after_dif, noise_h = diffusion_process.diffuse_zero_to_t(x_before_dif,time,mode='h')
         h_before_diffusion.append(x_before_dif)
         h_after_diffusion.append(h_after_dif)
         y_for_noise_h.append(noise_h)
