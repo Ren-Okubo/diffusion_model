@@ -44,7 +44,7 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
 
     argparser = argparse.ArgumentParser()
-    argparser.add_argument('output_each_epoch',type=bool,default=True)
+    argparser.add_argument('--output_each_epoch',type=bool,default=True)
     args = argparser.parse_args()
 
     with open('parameters.yaml','r') as file:
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         del params['noise_precision']
         del params['noise_schedule_power']
 
-    wandb.init(project='adjusted dataset',config=params,name='conditional hidden 512 patience 200 batch 2 compress')
+    wandb.init(project='2024_12',config=params,name='conditional hidden 1024 epoch 1000 L 5')
     
     seed = params['seed']
     random.seed(seed)
@@ -125,6 +125,7 @@ if __name__ == "__main__":
     setupdata = SetUpData(seed=seed,conditional=conditional)
     diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep,noise_schedule=noise_schedule)
 
+    """
     data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
     dataset = setupdata.resize_spectrum(dataset=dataset,resize=spectrum_size)
@@ -132,10 +133,13 @@ if __name__ == "__main__":
     dataset_only_CN2 = []
     for i in range(len(dataset)):
         if dataset[i].pos.shape[0] == 3:
-            if calculate_angle_for_CN2(dataset[i].pos) < 179:
-                dataset_only_CN2.append(dataset[i])
+            #if calculate_angle_for_CN2(dataset[i].pos) < 179:
+                #dataset_only_CN2.append(dataset[i])
+            dataset_only_CN2.append(dataset[i])
     dataset = dataset_only_CN2
-    
+    """
+
+    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
 
     train_data, val_data, test_data = setupdata.split(dataset)
 

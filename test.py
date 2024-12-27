@@ -147,14 +147,16 @@ if __name__ == '__main__':
     data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
     dataset = setupdata.resize_spectrum(dataset,resize=spectrum_size)
-
+    """
     dataset_only_CN2 = []
     for i in range(len(dataset)):
         if dataset[i].pos.shape[0] == 3:
             dataset_only_CN2.append(dataset[i])
     dataset = dataset_only_CN2
-    
+    """
     #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/filtered_dataset_only_Si.pt',weights_only=True)
+
+    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
