@@ -1,0 +1,311 @@
+import torch, os, pdb
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+import scipy.stats as stats
+from split_to_train_and_test import SetUpData
+import wandb
+import argparse
+from PIL import Image
+from sklearn.metrics import r2_score
+
+def calculate_angle_for_CN2(coords_tensor):
+    v1 = coords_tensor[1] - coords_tensor[0]
+    v2 = coords_tensor[2] - coords_tensor[0]
+    cos = torch.dot(v1,v2) / (torch.norm(v1) * torch.norm(v2))
+    return np.degrees(torch.acos(cos).item())
+
+def calculate_bond_length_for_CN2(coords_tensor):
+    v1 = coords_tensor[1] - coords_tensor[0]
+    v2 = coords_tensor[2] - coords_tensor[0]
+    return torch.norm(v1).item(),torch.norm(v2).item()
+
+if __name__ == '__main__':
+
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('--project_name', type=str, required=True)
+    argparser.add_argument('--run_id', type=str, required=True)
+    args = argparser.parse_args()
+
+    run = wandb.init(project=args.project_name, id=args.run_id, resume='must')
+    params = run.config
+    
+    gs = GridSpec(2,2,height_ratios=[1,4],width_ratios=[4,1])
+    fig = plt.figure(figsize=(10,10))
+    ax_scatter = fig.add_subplot(gs[1,0])
+    #model_name = 'egnn_202411281617'
+    #model_name = str(input('model_name:'))
+    model_name = 'egnn_' + params['now']
+
+
+
+    """
+    project_name = str(input('project_name:'))
+    run_id = str(input('run_id:'))
+    api = wandb.Api()
+    run = api.run(f'{project_name}/{run_id}')
+    config = run.config
+    generated_graph_save_path = config['generated_graph_save_path']
+    original_graph_save_path = config['original_graph_save_path']
+    generated_graph = torch.load(generated_graph_save_path)
+    original_graph = torch.load(original_graph_save_path)
+
+    theta_list, phi_list = [],[]
+    for i in range(len(original_graph)):
+        theta_list.append(calculate_angle_for_CN2(original_graph[i].pos))
+        phi_list.append(calculate_angle_for_CN2(generated_graph[i][-1].pos))
+    """
+    """
+    data = np.load('/mnt/homenfsxx/rokubo/data/diffusion_model/conditional_gen_by_dataset_only_CN2_including_180_' + model_name +'.npz')
+    original_coords = data['original_coords_list']
+    generated_coords = data['generated_coords_list']
+    theta_list, phi_list = [],[]
+    for i in range(len(original_coords)):
+        theta_list.append(calculate_angle_for_CN2(torch.tensor(original_coords[i])))
+        phi_list.append(calculate_angle_for_CN2(torch.tensor(generated_coords[i][-1])))
+    """
+
+    original_data = torch.load(params.original_graph_save_path)
+    generated_data = torch.load(params.generated_graph_save_path)
+    original_coords, generated_coords = [],[]
+    for data in original_data:
+        original_coords.append(data.pos)
+    for data in generated_data:
+        generated_coords.append(data[-1].pos)
+    theta_list, phi_list = [],[]
+    for i in range(len(original_coords)):
+        theta_list.append(calculate_angle_for_CN2(original_coords[i]))
+        phi_list.append(calculate_angle_for_CN2(generated_coords[i]))
+
+    
+    #theta_list = data['theta_list']
+    #phi_list = data['phi_list']
+    average_theta_per_graph =[]
+    average_phi_per_graph =[]
+    std_phi_per_graph = []
+
+    how_many_gen = 5
+
+    for i in list(range(0,len(theta_list),how_many_gen)):
+        if np.isnan(np.mean(theta_list[i:i+how_many_gen])) or np.isnan(np.mean(phi_list[i:i+how_many_gen])):
+            print("Error: Data contains NaN values")
+        else:
+            average_theta_per_graph.append(np.mean(theta_list[i:i+how_many_gen]))
+            average_phi_per_graph.append(np.mean(phi_list[i:i+how_many_gen]))
+            std_phi_per_graph.append(np.std(phi_list[i:i+how_many_gen]))
+    
+
+
+    hist_theta, bins_theta = np.histogram(average_theta_per_graph,bins=50,range=(70,180))
+    hist_phi, bins_phi = np.histogram(average_phi_per_graph,bins=50,range=(70,180))
+    #hist_theta, bins_theta = np.histogram(theta_list,bins=50,range=(70,180))
+    #hist_phi, bins_phi = np.histogram(phi_list,bins=50,range=(70,180))
+    bin_centers_theta = (bins_theta[:-1] + bins_theta[1:]) / 2
+    bin_centers_phi = (bins_phi[:-1] + bins_phi[1:]) / 2
+
+    #distance = stats.wasserstein_distance(bin_centers_theta,bin_centers_phi,u_weights=hist_theta,v_weights=hist_phi)
+    #print('distance:',distance)
+    
+    
+    list_theta = []
+    list_phi = []
+    for i in range(len(average_theta_per_graph)):
+        if np.isnan(average_theta_per_graph[i]) or np.isnan(average_phi_per_graph[i]):
+            print("Error: Data contains NaN values")
+        else:
+            list_theta.append(average_theta_per_graph[i])
+            list_phi.append(average_phi_per_graph[i])
+    
+    average_theta_per_graph = np.array(list_theta)
+    average_phi_per_graph = np.array(list_phi)
+    if np.any(np.isnan(average_theta_per_graph)) or np.any(np.isnan(average_phi_per_graph)):
+        print("Error: Data contains NaN values")
+
+    
+    ax_scatter.plot([0,180],[0,180],zorder=3,alpha=0.7)
+    ax_scatter.plot(theta_list,phi_list,'o',markersize=1.5)
+    #ax_scatter.errorbar(average_theta_per_graph,average_phi_per_graph,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
+    ax_scatter.plot(average_theta_per_graph,average_phi_per_graph,'o',markersize=3,color='blue',label='average per graph')
+    ax_scatter.set_xlabel('theta')
+    ax_scatter.set_ylabel('phi')
+    ax_scatter.set_xlim(60,180)
+    ax_scatter.set_ylim(60,180)
+    ax_scatter.legend()
+
+    ax_text = fig.add_subplot(gs[0,1])
+    """
+    num_of_test_data = len(average_theta_per_graph)
+    num_within_range = 0
+    for i in range(num_of_test_data):
+        if average_theta_per_graph[i] >= average_phi_per_graph[i]:
+            if average_theta_per_graph[i] < average_phi_per_graph[i]+std_phi_per_graph[i]:
+                num_within_range += 1
+        else:
+            if average_theta_per_graph[i] > average_phi_per_graph[i]-std_phi_per_graph[i]:
+                num_within_range += 1
+    """
+    r2 = r2_score(average_theta_per_graph,average_phi_per_graph)
+    ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
+    ax_text.axis('off')
+
+
+    ax_hist_theta = fig.add_subplot(gs[0,0],sharex=ax_scatter)
+    ax_hist_phi = fig.add_subplot(gs[1,1],sharey=ax_scatter)
+    ax_hist_theta.hist(average_theta_per_graph,bins=50,orientation='vertical')
+    ax_hist_phi.hist(average_phi_per_graph,bins=50,orientation='horizontal')
+    #ax_hist_theta.hist(theta_list,bins=50,range=(70,180),orientation='vertical')
+    #ax_hist_phi.hist(phi_list,bins=50,range=(70,180),orientation='horizontal')
+    ax_hist_theta.get_xaxis().set_visible(False)
+    ax_hist_phi.get_yaxis().set_visible(False)
+    plt.subplots_adjust(wspace=0.05,hspace=0.05)
+    plt.savefig('./comparison_between_original_and_gen/about_angle/angle_comparison_spectrum_' + model_name + '.png')
+    image = Image.open('./comparison_between_original_and_gen/about_angle/angle_comparison_spectrum_' + model_name + '.png')
+    run.log({'angle': wandb.Image(image)})
+    plt.close()
+    
+    
+    gs = GridSpec(2,2,height_ratios=[1,4],width_ratios=[4,1])
+    fig = plt.figure(figsize=(10,10))
+    ax_scatter = fig.add_subplot(gs[1,0])
+    
+    """
+    #data = np.load('/mnt/homenfsxx/rokubo/data/diffusion_model/conditional_gen_by_dataset_only_CN2_including_180_egnn_202410291612.npz')
+    original_coords = data['original_coords_list']
+    generated_coords = data['generated_coords_list']
+    theta_length, phi_length = [],[]
+    for i in range(len(original_coords)):
+        norm1, norm2 = calculate_bond_length_for_CN2(torch.tensor(original_coords[i]))
+        theta_length.append((norm1+norm2)/2)
+        norm1, norm2 = calculate_bond_length_for_CN2(torch.tensor(generated_coords[i][-1]))
+        phi_length.append((norm1+norm2)/2)
+    
+    theta_length, phi_length = [],[]
+    for i in range(len(original_graph)):
+        norm1, norm2 = calculate_bond_length_for_CN2(original_graph[i].pos)
+        theta_length.append((norm1+norm2)/2)
+        norm1, norm2 = calculate_bond_length_for_CN2(generated_graph[i][-1].pos)
+        phi_length.append((norm1+norm2)/2)
+    """
+    theta_length, phi_length = [],[]
+    for i in range(len(original_coords)):
+        norm1, norm2 = calculate_bond_length_for_CN2(original_coords[i])
+        theta_length.append((norm1+norm2)/2)
+        norm1, norm2 = calculate_bond_length_for_CN2(generated_coords[i])
+        phi_length.append((norm1+norm2)/2)
+
+    std_phi_per_graph = []
+    average_length_of_original, average_length_of_generated = [],[]
+    for i in list(range(0,len(theta_list),how_many_gen)):
+        average_length_of_original.append(np.mean(theta_length[i:i+how_many_gen]))
+        average_length_of_generated.append(np.mean(phi_length[i:i+how_many_gen]))
+        std_phi_per_graph.append(np.std(phi_length[i:i+how_many_gen]))
+
+    hist_theta, bins_theta = np.histogram(average_length_of_original,bins=50)
+    hist_phi, bins_phi = np.histogram(average_length_of_generated,bins=50)
+    bin_centers_theta = (bins_theta[:-1] + bins_theta[1:]) / 2
+    bin_centers_phi = (bins_phi[:-1] + bins_phi[1:]) / 2
+
+    distance = stats.wasserstein_distance(bin_centers_theta,bin_centers_phi,u_weights=hist_theta,v_weights=hist_phi)
+    
+    ax_scatter.plot([0,5],[0,5],zorder=3,alpha=0.7)
+    ax_scatter.plot(theta_length,phi_length,'o',markersize=1.5)
+    ax_scatter.plot(average_length_of_original,average_length_of_generated,'o',markersize=3,label='average per graph',color='blue')
+    #ax_scatter.errorbar(average_length_of_original,average_length_of_generated,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
+    ax_scatter.set_xlabel('mean of 2 lengths of original')
+    ax_scatter.set_ylabel('mean of 2 lengths of generated')
+    ax_scatter.set_xlim(1.2,2.2)
+    ax_scatter.set_ylim(1.2,2.2)
+    ax_scatter.legend()
+
+    ax_text = fig.add_subplot(gs[0,1])
+    r2 = r2_score(average_length_of_original,average_length_of_generated)
+    ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
+    ax_text.axis('off')
+
+
+    ax_hist_theta = fig.add_subplot(gs[0,0],sharex=ax_scatter)
+    ax_hist_phi = fig.add_subplot(gs[1,1],sharey=ax_scatter)
+    ax_text = fig.add_subplot(gs[0,1])
+    #ax_text.text(0.5,0.5,'wasserstein_distance:\n{:.2f}'.format(distance),fontsize=12,ha='center',va='center')
+    #ax_text.axis('off')
+    ax_hist_theta.hist(average_length_of_original,bins=50,orientation='vertical')
+    ax_hist_phi.hist(average_length_of_generated,bins=50,orientation='horizontal')
+    ax_hist_theta.get_xaxis().set_visible(False)
+    ax_hist_phi.get_yaxis().set_visible(False)
+    plt.subplots_adjust(wspace=0.05,hspace=0.05)
+    plt.savefig('/mnt/homenfsxx/rokubo/data/diffusion_model/comparison_between_original_and_gen/about length/length_comparison_between_original_and_gen_except_180_' + model_name + '.png')
+    image = Image.open('/mnt/homenfsxx/rokubo/data/diffusion_model/comparison_between_original_and_gen/about length/length_comparison_between_original_and_gen_except_180_' + model_name + '.png')
+    run.log({'bond length': wandb.Image(image)})
+    plt.close()
+    run.finish()
+    
+    """
+    data = np.load('generated_graph_on_1000_different_seeds_conditioned_by_angle_149_mp_557004_17_dataset_except_180.npz')
+    generated_coords = data['generated_coords_list']
+    original_coords = data['original_coords_list']
+    angle_for_gen = []
+    target_angle = calculate_angle_for_CN2(torch.tensor(original_coords[0]))
+    for gen_coord in generated_coords:
+        angle_for_gen.append(calculate_angle_for_CN2(torch.tensor(gen_coord)))
+    fif, ax = plt.subplots()
+    ax.hist(angle_for_gen,bins=75)
+    ax.axvline(target_angle,color='red',label='target angle = {}'.format(target_angle))
+    ax.set_xlabel('angle')
+    ax.set_ylabel('frequency')
+    ax.legend()
+    plt.savefig('angle_distribution_of_generated_graph_on_1000_different_seeds_conditioned_by_angle_149_mp_557004_17_dataset_except_180.png')
+    plt.close()
+    
+    
+    #data_for_original_distribution = np.load('./comparison_between_original_and_gen/about_angle/angle_comparison_between_original_and_generated_except_180.npz')
+    data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
+    dataset = SetUpData().npy_to_graph(data)
+    theta_list = []
+    #for i in range(len(dataset)):
+        #if dataset[i].num_nodes == 3:
+            #theta_list.append(calculate_angle_for_CN2(dataset[i].pos))
+
+    for i in range(len(dataset)):
+        if dataset[i].pos.shape[0] == 3:
+            distance1, distance2 = calculate_bond_length_for_CN2(dataset[i].pos)
+            theta_list.append(0.5*(distance1+distance2))
+    
+    #data_for_original_distribution = np.load('./comparison_between_original_and_gen/about_angle/angle_comparison_between_original_and_generated.npz')
+    #theta_list = data_for_original_distribution['theta_list']
+    data_of_abinitio = np.load('/mnt/homenfsxx/rokubo/data/diffusion_model/result_or_unknown/abinitio_gen_by_dataset_only_CN2_including_180_10161249.npz')
+    abinitio_coords = data_of_abinitio['generated_coords_list']
+    #angle_for_abinitio = []
+    #for abinitio_coord in abinitio_coords:
+        #angle_for_abinitio.append(calculate_angle_for_CN2(torch.tensor(abinitio_coord)))
+    distance_for_abinitio = []
+    for abinitio_coord in abinitio_coords:
+        distance1, distance2 = calculate_bond_length_for_CN2(torch.tensor(abinitio_coord))
+        distance_for_abinitio.append(0.5*(distance1+distance2))
+
+    #hist_original, bins_original = np.histogram(theta_list,bins=50,range=(70,180))
+    #hist_abinitio, bins_abinitio = np.histogram(angle_for_abinitio,bins=50,range=(70,180))
+
+    hist_original, bins_original = np.histogram(theta_list,bins=50,range=(0.5,2.0))
+    hist_abinitio, bins_abinitio = np.histogram(distance_for_abinitio,bins=50,range=(0.5,2.0))
+
+    bins_center_original = (bins_original[:-1] + bins_original[1:]) / 2
+    bins_center_abinitio = (bins_abinitio[:-1] + bins_abinitio[1:]) / 2
+
+    distance = stats.wasserstein_distance(bins_center_original,bins_center_abinitio,u_weights=hist_original,v_weights=hist_abinitio)
+    print('distance:',distance)
+
+    hist_original = hist_original/np.sum(hist_original)
+    hist_abinitio = hist_abinitio/np.sum(hist_abinitio)
+
+
+
+    plt.figure(figsize=(10,6))
+    plt.bar(bins_original[:-1],hist_original,width=np.diff(bins_original),align='edge',label='original',alpha=0.5)
+    plt.bar(bins_abinitio[:-1],hist_abinitio,width=np.diff(bins_abinitio),align='edge',label='abinitio',alpha=0.5)
+    plt.xlabel('angle')
+    plt.ylabel('Normalized frequency')
+    plt.legend()
+    plt.title('distance distribution of original and abinitio')
+    plt.savefig('abinitio_distance_bad.png')
+    plt.close()
+    """

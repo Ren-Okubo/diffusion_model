@@ -20,6 +20,8 @@ from EquivariantGraphNeuralNetwork import EGCL, EquivariantGNN
 from CN2_evaluate import calculate_angle_for_CN2
 from PIL import Image, ImageFilter
 from DataPreprocessor import SpectrumCompressor
+import argparse
+import wandb
 
 def write_xyz_for_prediction_only_si(save_name,generated_coords:torch.tensor,original_coords:torch.tensor=None,mode='individual'):
     if mode == 'individual':
@@ -55,8 +57,17 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.set_default_tensor_type(torch.cuda.FloatTensor)
     print('device:',device)
-    with open('parameters.yaml','r') as file:
-        params = yaml.safe_load(file)
+
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('--project_name', type=str, required=True)
+    argparser.add_argument('--run_id', type=str, required=True)
+    args = argparser.parse_args()
+
+    run = wandb.init(project=args.project_name,id=args.run_id,resume='must')
+    params = run.config
+
+    #with open('parameters.yaml','r') as file:
+        #params = yaml.safe_load(file)
     
     seed = params['seed']
     random.seed(seed)
@@ -131,7 +142,8 @@ if __name__ == '__main__':
     criterion = nn.MSELoss()
 
     #model_path = 'egnn_202412201607'
-    model_path = str(input('model_path: '))
+    #model_path = str(input('model_path: '))
+    model_path = 'egnn_' + params['now']
 
     state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
@@ -143,11 +155,11 @@ if __name__ == '__main__':
         diffusion_process.gamma.load_state_dict(state_dicts['GammaNetwork'])
         diffusion_process.gamma.eval()
     setupdata = SetUpData(seed,conditional)
-    
+    """
     data = np.load("/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/dataset.npy",allow_pickle=True)
     dataset = setupdata.npy_to_graph(data)
     dataset = setupdata.resize_spectrum(dataset,resize=spectrum_size)
-    """
+    
     dataset_only_CN2 = []
     for i in range(len(dataset)):
         if dataset[i].pos.shape[0] == 3:
@@ -155,9 +167,9 @@ if __name__ == '__main__':
     dataset = dataset_only_CN2
     """
     #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/filtered_dataset_only_Si.pt',weights_only=True)
-
-    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
-
+    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/spectrum_to_only_exO_dataset_except_CN0.pt')
+    #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
+    #dataset = torch.load(f'/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/{params[dataset]}.pt')
     train_data, val_data, test_data = setupdata.split(dataset)
 
 
@@ -181,12 +193,11 @@ if __name__ == '__main__':
         seed_value = 0
         for i in tqdm(range(len(test_data))):
             data = test_data[i]
-            if data.spectrum.shape[0] != 3:
-                continue
                 
             num_of_generated_coords = 0
             num_of_generated_nun = 0
 
+            print(200)
             how_many_gen = 5
             while num_of_generated_coords != how_many_gen:
                 
@@ -206,10 +217,13 @@ if __name__ == '__main__':
                 initial_coords = torch.zeros(size=(num_atom,3)).to(device)
                 initial_coords.normal_()
                 initial_coords = initial_coords - torch.mean(initial_coords,dim=0,keepdim=True)
+                """
                 atom_type = [[1,0]]
                 for i in range(num_atom-1):
                     atom_type.append([0,1])
                 x = torch.tensor(atom_type,dtype=torch.float32).to(device)
+                """
+                x = data.x.to(device)
                 graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=data.spectrum.to(device))#
                 #test_spectrum = torch.zeros((num_atom,data.spectrum.shape[1])).to(device)
                 #graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=test_spectrum)#
@@ -223,7 +237,7 @@ if __name__ == '__main__':
                     for time in list(range(num_diffusion_timestep,0,-1)):
 
                         if time%100 == 0:
-                            transition_of_coords_per_100steps.append(graph.pos)
+                            transition_of_coords_per_100steps.append(graph)
                         
                         time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32).to(device)
                         if to_compress_spectrum:
@@ -248,10 +262,10 @@ if __name__ == '__main__':
                                 exit()
                             break
                 if torch.isfinite(graph.pos).all():
-                    transition_of_coords_per_100steps.append(graph.pos)
-                    transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
-                    transition_of_coords_per_100steps = [coords.cpu().numpy() for coords in transition_of_coords_per_100steps]
-                    transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
+                    transition_of_coords_per_100steps.append(graph)
+                    #transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
+                    #transition_of_coords_per_100steps = [coords.cpu().numpy() for coords in transition_of_coords_per_100steps]
+                    #transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
                     num_of_generated_coords += 1
                     seed_value += 1
                     """
@@ -267,21 +281,28 @@ if __name__ == '__main__':
                                 print(i)
                         pdb.set_trace()
                     """   
-                    original_coords_list.append(data.pos)
+                    original_coords_list.append(data)
                     generated_coords_list.append(transition_of_coords_per_100steps)
-                    print('successfully generated',num_of_generated_coords)
+                    #print('successfully generated',num_of_generated_coords)
                 
         # データの形状を確認
         #for i, (original, generated) in enumerate(zip(original_coords_list, generated_coords_list)):
             #print(f"Original {i}: {original.shape}, Generated {i}: {generated.shape}")
 
         # データを適切な形状に変換
-        original_coords_array = np.array([coords.cpu().numpy() if isinstance(coords, torch.Tensor) else coords for coords in original_coords_list])
-        generated_coords_array = np.array([coords.cpu().numpy() if isinstance(coords, torch.Tensor) else coords for coords in generated_coords_list])
-        original_coords_list = original_coords_array
-        generated_coords_list = generated_coords_array
+        #original_coords_array = np.array([coords.cpu().numpy() if isinstance(coords, torch.Tensor) else coords for coords in original_coords_list])
+        #generated_coords_array = np.array([coords.cpu().numpy() if isinstance(coords, torch.Tensor) else coords for coords in generated_coords_list])
+        #original_coords_list = original_coords_array
+        #generated_coords_list = generated_coords_array
 
-        np.savez('conditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+        generated_graph_save_path = os.path.join(wandb.run.dir,"generated_graph.pt")
+        original_graph_save_path = os.path.join(wandb.run.dir,"original_graph.pt")
+        torch.save(generated_coords_list,generated_graph_save_path)
+        torch.save(original_coords_list,original_graph_save_path)
+        wandb.config.update({"generated_graph_save_path": generated_graph_save_path})
+        wandb.config.update({"original_graph_save_path": original_graph_save_path})
+        run.finish()
+        #np.savez('conditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
     else:
         seed_value = 0
@@ -293,9 +314,7 @@ if __name__ == '__main__':
             torch.manual_seed(seed_value)
             np.random.seed(seed_value)
             random.seed(seed_value)
-            #data = train_data[913]
-            data = test_data[9]  #
-            num_atom = data.pos.shape[0] #
+            num_atom = 3
 
 
             edge_index = []
@@ -319,7 +338,7 @@ if __name__ == '__main__':
             with torch.no_grad():
                 for time in list(range(num_diffusion_timestep,0,-1)):
                     if time%100 == 0:
-                        transition_of_coords_per_100steps.append(graph.pos)
+                        transition_of_coords_per_100steps.append(graph)
                     
                     time_tensor = torch.tensor([[time/num_diffusion_timestep] for d in range(num_atom)],dtype=torch.float32).to(device)
                     graph.h = torch.cat((onehot_scaling_factor*graph.x,time_tensor),dim=1)
@@ -335,17 +354,22 @@ if __name__ == '__main__':
                         seed_value += 1
                         break
             if torch.isfinite(graph.pos).all():
-                transition_of_coords_per_100steps.append(graph.pos)
-                transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
-                transition_of_coords_per_100steps = [coords.cpu().numpy() for coords in transition_of_coords_per_100steps]
-                transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
+                transition_of_coords_per_100steps.append(graph)
+                #transition_of_coords_per_100steps = torch.stack(transition_of_coords_per_100steps)
+                #transition_of_coords_per_100steps = [coords.cpu().numpy() for coords in transition_of_coords_per_100steps]
+                #transition_of_coords_per_100steps = np.array(transition_of_coords_per_100steps)
                 num_of_generated_coords += 1
                 seed_value += 1
                 
                 original_coords_list.append(-1)
                 generated_coords_list.append(transition_of_coords_per_100steps)
-                print('successfully generated',num_of_generated_coords)
-        np.savez('abinitio_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
+                #print('successfully generated',num_of_generated_coords)
+
+        generated_graph_save_path = os.path.join(wandb.run.dir,'generated_graph.pt')
+        torch.save(generated_coords_list,generated_graph_save_path)
+        wandb.config.update({"generated_graph_save_path": generated_graph_save_path})
+        run.finish()
+        #np.savez('abinitio_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 """
     for data in test_data:
         if data.spectrum.shape[0] != 3:

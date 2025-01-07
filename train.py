@@ -44,7 +44,10 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
 
     argparser = argparse.ArgumentParser()
-    argparser.add_argument('--output_each_epoch',type=bool,default=True)
+    argparser.add_argument('--output_each_epoch',type=bool,default=False)
+    argparser.add_argument('--project_name', type=str, required=True)
+    argparser.add_argument('--run_name', type=str, default=None)
+    argparser.add_argument('--dataset', type=str, required=True) #dataset, dataset_only_CN2_Si, filtered_dataset, filtered_dataset_only_CN2_Si, spectrum_to_only_exO_dataset_except_CN0
     args = argparser.parse_args()
 
     with open('parameters.yaml','r') as file:
@@ -59,7 +62,7 @@ if __name__ == "__main__":
         del params['noise_precision']
         del params['noise_schedule_power']
 
-    wandb.init(project='2024_12',config=params,name='conditional hidden 1024 epoch 1000 L 5')
+    wandb.init(project=args.project_name,config=params,name=args.run_name)
     
     seed = params['seed']
     random.seed(seed)
@@ -139,7 +142,11 @@ if __name__ == "__main__":
     dataset = dataset_only_CN2
     """
 
-    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
+    #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
+
+    dataset_name = args.dataset
+    dataset = torch.load(f'/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/{dataset_name}.pt')
+    wandb.config.update({'dataset':dataset_name})
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
@@ -229,7 +236,6 @@ if __name__ == "__main__":
             train_graph.pos = diffused_pos
             train_graph.time = torch.tensor(attr_time_list,dtype=torch.long).to(device)
             
-
             h, x = egnn(train_graph.edge_index,train_graph.h,train_graph.diffused_coords)
             epsilon = x - train_graph.diffused_coords
             epsilon = remove_mean(epsilon,batch_index=train_graph.batch)
