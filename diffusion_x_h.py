@@ -60,7 +60,8 @@ class E3DiffusionProcess(torch.nn.Module):
     
     def calculate_mu(self,z:torch.tensor,epsilon:torch.tensor,t:int):
         alpha_t = self.alpha(t)
-        alpha_s = self.alpha(t)
+        alpha_s = self.alpha(t-1)
+        #alpha_s = self.alpha(t)
         squared_sigma_t = 1 - alpha_t**2
         sigma_t = torch.sqrt(squared_sigma_t)
         squared_sigma_s = 1 - alpha_s**2
