@@ -58,7 +58,7 @@ def evaluate_by_rmsd(original_graph_list,generated_graph_list):
         generated_graph = generated_graph_list[i][-1]
         if original_graph.pos.shape[0] == 1:
             continue
-        _,_,rmsd_value = kabsch_torch(original_graph.pos,generated_graph.pos)
+        _,_,rmsd_value = kabsch_torch(original_graph.pos.to('cuda'),generated_graph.pos.to('cuda'))
         rmsd_value_list.append(rmsd_value)
         id_list.append(original_graph.id)
         original_coords_list.append(original_graph)
@@ -82,6 +82,10 @@ if __name__ == '__main__':
     sorted_id_rmsd_original_generated_list = evaluate_by_rmsd(original_graph_list,generated_graph_list)
     sorted_id_list,sorted_rmsd_list,sorted_original_coords_list,sorted_generated_coords_list = zip(*sorted_id_rmsd_original_generated_list)
     sorted_rmsd_list = torch.tensor(sorted_rmsd_list).cpu().numpy()
+    rmsd_save_path = os.path.join(wandb.run.dir,'rmsd.pt')
+    torch.save(sorted_id_rmsd_original_generated_list,rmsd_save_path)
+    wandb.config.update({'rmsd_save_path':rmsd_save_path})
+    print(f'rmsd saved at {rmsd_save_path}')
     fig, ax = plt.subplots()
     ax.plot(sorted_rmsd_list,marker='o',linestyle='None')
     ax.set_xlabel('sorted_index')

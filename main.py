@@ -35,7 +35,6 @@ if __name__ == '__main__':
     parser.add_argument('--record_schedule',type=bool,default=False)
     parser.add_argument('--create_xyz_file',type=bool,default=False)
     parser.add_argument('--note',type=str,default=None)
-    parser.add_argument('--give_whether_exO',type=bool,default=False)
     parser.add_argument('--test_by_provided_data',type=str,default=None) #"QM9" or None
     args = parser.parse_args()
 

@@ -197,7 +197,6 @@ if __name__ == '__main__':
             num_of_generated_coords = 0
             num_of_generated_nun = 0
 
-            print(200)
             how_many_gen = 5
             while num_of_generated_coords != how_many_gen:
                 

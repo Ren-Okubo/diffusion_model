@@ -47,7 +47,8 @@ if __name__ == "__main__":
     argparser.add_argument('--output_each_epoch',type=bool,default=False)
     argparser.add_argument('--project_name', type=str, required=True)
     argparser.add_argument('--run_name', type=str, default=None)
-    argparser.add_argument('--dataset', type=str, required=True) #dataset, dataset_only_CN2_Si, filtered_dataset, filtered_dataset_only_CN2_Si, spectrum_to_only_exO_dataset_except_CN0
+    #argparser.add_argument('--dataset', type=str, required=True) #dataset, dataset_only_CN2_Si, filtered_dataset, filtered_dataset_only_CN2_Si, spectrum_to_only_exO_dataset_except_CN0
+    argparser.add_argument('--dataset_path', type=str, required=True)
     args = argparser.parse_args()
 
     with open('parameters.yaml','r') as file:
@@ -143,10 +144,13 @@ if __name__ == "__main__":
     """
 
     #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
-
+    """
     dataset_name = args.dataset
     dataset = torch.load(f'/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/{dataset_name}.pt')
     wandb.config.update({'dataset':dataset_name})
+    """
+    dataset = torch.load(args.dataset_path)
+    wandb.config.update({'dataset':args.dataset_path})
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
