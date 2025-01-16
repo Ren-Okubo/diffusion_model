@@ -11,6 +11,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import MessagePassing
 from torch.optim.lr_scheduler import StepLR
+from schedulefree import RAdamScheduleFree
 #from E3diffusion import E3DiffusionProcess, remove_mean
 from E3diffusion_new import E3DiffusionProcess, remove_mean
 from CN2_evaluate import calculate_angle_for_CN2
@@ -175,6 +176,21 @@ if __name__ == "__main__":
     
     if to_compress_spectrum:
         if noise_schedule == 'learned':
+            param_list_for_optim = list(egnn.parameters())+list(spectrum_compressor.parameters())+list(diffusion_process.gamma.parameters())
+        else:
+            param_list_for_optim = list(egnn.parameters())+list(spectrum_compressor.parameters())
+    else:
+        if noise_schedule == 'learned':
+            param_list_for_optim = list(egnn.parameters())+list(diffusion_process.gamma.parameters())
+        else:
+            param_list_fro_optim = list(egnn.parameters())
+
+    #optimizer = optim.Adam(param_list_for_optim,lr=lr,weight_decay=weight_decay)
+    optimizer = RAdamScheduleFree(param_list_for_optim,lr=lr,weight_decay=weight_decay)
+
+    """
+    if to_compress_spectrum:
+        if noise_schedule == 'learned':
             optimizer = optim.Adam(list(egnn.parameters())+list(spectrum_compressor.parameters())+list(diffusion_process.gamma.parameters()),lr=lr,weight_decay=weight_decay)
         else:
             optimizer = optim.Adam(list(egnn.parameters())+list(spectrum_compressor.parameters()),lr=lr,weight_decay=weight_decay)
@@ -183,7 +199,7 @@ if __name__ == "__main__":
             optimizer = optim.Adam(list(egnn.parameters())+list(diffusion_process.gamma.parameters()),lr=lr,weight_decay=weight_decay)
         else:
             optimizer = optim.Adam(egnn.parameters(),lr=lr,weight_decay=weight_decay)
-    
+    """
 
     
 
@@ -193,6 +209,7 @@ if __name__ == "__main__":
 
     for epoch in range(num_epochs):
         egnn.train()
+        optimizer.train()
         if to_compress_spectrum:
             spectrum_compressor.train()
         if noise_schedule == 'learned':
@@ -256,6 +273,7 @@ if __name__ == "__main__":
         
 
         egnn.eval()
+        optimizer.eval()
         if to_compress_spectrum:
             spectrum_compressor.eval()
         if noise_schedule == 'learned':
