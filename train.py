@@ -150,7 +150,7 @@ if __name__ == "__main__":
     wandb.config.update({'dataset':dataset_name})
     """
     dataset = torch.load(args.dataset_path)
-    wandb.config.update({'dataset':args.dataset_path})
+    wandb.config.update({'dataset_path':args.dataset_path})
 
     train_data, val_data, test_data = setupdata.split(dataset)
 

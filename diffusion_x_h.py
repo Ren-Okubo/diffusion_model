@@ -75,7 +75,8 @@ class E3DiffusionProcess(torch.nn.Module):
     def reverse_diffuse_one_step(self,z,epsilon:torch.tensor,t:int,mode='pos'):
         mu = self.calculate_mu(z,epsilon,t)
         alpha_t = self.alpha(t)
-        alpha_s = self.alpha(t)
+        #alpha_s = self.alpha(t)
+        alpha_s = self.alpha(t-1)
         squared_sigma_t = 1 - alpha_t**2
         squared_sigma_s = 1 - alpha_s**2
         alpha_ts = alpha_t / alpha_s

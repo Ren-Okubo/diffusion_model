@@ -54,7 +54,7 @@ class E3DiffusionProcess():
         """
 
     def diffuse_zero_to_t(self,pos:torch.tensor,t:int):
-        noise = torch.zeros_like(pos)
+        noise = torch.zeros_like(pos,dtype=torch.float32)
         noise.normal_(mean=0,std=1)
         noise = remove_mean(noise)
         pos_after_diffuse = self.alpha(t) * pos + self.sigma(t) * noise

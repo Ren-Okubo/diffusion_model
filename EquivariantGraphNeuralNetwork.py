@@ -19,6 +19,8 @@ class EGCL(MessagePassing):
         self.mlp_x = nn.Sequential(
             nn.Linear(x_input,x_hidden),
             nn.SiLU(),
+            nn.Linear(x_hidden,x_hidden),
+            nn.SiLU(),
             nn.Linear(x_hidden,x_output)
             )
         self.mlp_h = nn.Sequential(

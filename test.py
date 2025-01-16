@@ -61,6 +61,7 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--project_name', type=str, required=True)
     argparser.add_argument('--run_id', type=str, required=True)
+    argparser.add_argument('--num_generate', type=int, default=5)
     args = argparser.parse_args()
 
     run = wandb.init(project=args.project_name,id=args.run_id,resume='must')
@@ -167,10 +168,22 @@ if __name__ == '__main__':
     dataset = dataset_only_CN2
     """
     #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/filtered_dataset_only_Si.pt',weights_only=True)
-    dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/spectrum_to_only_exO_dataset_except_CN0.pt')
+    #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/spectrum_to_only_exO_dataset_except_CN0.pt')
     #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
     #dataset = torch.load(f'/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/{params[dataset]}.pt')
+    dataset = torch.load(params['dataset_path'])
     train_data, val_data, test_data = setupdata.split(dataset)
+
+    
+    test_dataset = []
+    for data in test_data:
+        if data.pos.shape[0] == 1:
+            continue
+        else:
+            test_dataset.append(data)
+    print(len(test_data))
+    print(len(test_dataset))
+    test_data = test_dataset
 
 
     """
@@ -197,6 +210,7 @@ if __name__ == '__main__':
             num_of_generated_coords = 0
             num_of_generated_nun = 0
 
+            #how_many_gen = args.num_generate
             how_many_gen = 5
             while num_of_generated_coords != how_many_gen:
                 
@@ -298,8 +312,8 @@ if __name__ == '__main__':
         original_graph_save_path = os.path.join(wandb.run.dir,"original_graph.pt")
         torch.save(generated_coords_list,generated_graph_save_path)
         torch.save(original_coords_list,original_graph_save_path)
-        wandb.config.update({"generated_graph_save_path": generated_graph_save_path})
-        wandb.config.update({"original_graph_save_path": original_graph_save_path})
+        wandb.config.update({"generated_graph_save_path": generated_graph_save_path}, allow_val_change=True)
+        wandb.config.update({"original_graph_save_path": original_graph_save_path}, allow_val_change=True)
         run.finish()
         #np.savez('conditional_gen_by_dataset_only_CN2_including_180_'+ model_path + '.npz',original_coords_list=original_coords_list,generated_coords_list=generated_coords_list)
 
