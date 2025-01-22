@@ -155,6 +155,22 @@ if __name__ == "__main__":
 
     train_data, val_data, test_data = setupdata.split(dataset)
 
+    train_dataset = []
+    for data in train_data:
+        if data.pos.shape[0] == 1:
+            continue
+        else:
+            train_dataset.append(data)
+    train_data = train_dataset
+    eval_dataset = []
+    for data in val_data:
+        if data.pos.shape[0] == 1:
+            continue
+        else:
+            eval_dataset.append(data)
+    val_data = eval_dataset
+
+
     train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True,generator=torch.Generator(device='cuda'))
     val_loader = DataLoader(val_data,batch_size=batch_size,shuffle=True,generator=torch.Generator(device='cuda'))
     test_loader = DataLoader(test_data,batch_size=batch_size,shuffle=True,generator=torch.Generator(device='cuda'))
