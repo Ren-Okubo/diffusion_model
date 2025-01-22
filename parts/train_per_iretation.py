@@ -308,7 +308,8 @@ def generate(nn_dict,test_data,params,diffusion_process):
                 edge_index = []
                 for i in range(num_of_atoms):
                     for j in range(num_of_atoms):
-                        edge_index.append([i,j])
+                        if i != j:
+                            edge_index.append([i,j])
                 edge_index = torch.tensor(edge_index,dtype=torch.long).t().contiguous()
 
                 #初期値をData型に変換

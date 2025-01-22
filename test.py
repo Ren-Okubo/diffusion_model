@@ -237,7 +237,7 @@ if __name__ == '__main__':
                 x = torch.tensor(atom_type,dtype=torch.float32).to(device)
                 """
                 x = data.x.to(device)
-                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=data.spectrum.to(device))#
+                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=data.spectrum.to(device),id=data.id)#
                 #test_spectrum = torch.zeros((num_atom,data.spectrum.shape[1])).to(device)
                 #graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=test_spectrum)#
 

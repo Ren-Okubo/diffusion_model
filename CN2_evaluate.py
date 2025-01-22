@@ -20,6 +20,22 @@ def calculate_bond_length_for_CN2(coords_tensor):
     v2 = coords_tensor[2] - coords_tensor[0]
     return torch.norm(v1).item(),torch.norm(v2).item()
 
+def r2score(a,b):
+    arr_x = np.array(a)
+    arr_y = np.array(b)
+    n = len(arr_x)
+    mean_x = sum(arr_x)/n
+    mean_y = sum(arr_y)/n
+    t_xx = sum((arr_x-mean_x)**2)
+    t_yy = sum((arr_y-mean_y)**2)
+    t_xy = sum((arr_x-mean_x)*(arr_y-mean_y))
+    slope = t_xy/t_xx
+    intercept = (1/n)*sum(arr_y)-(1/n)*slope*sum(arr_x)
+    predict_x=intercept+slope*arr_x
+    resudial_y=arr_y-predict_x
+    r2 = 1-(sum(resudial_y**2))/t_yy
+    return r2
+
 if __name__ == '__main__':
 
     argparser = argparse.ArgumentParser()
@@ -65,13 +81,50 @@ if __name__ == '__main__':
         phi_list.append(calculate_angle_for_CN2(torch.tensor(generated_coords[i][-1])))
     """
 
-    original_data = torch.load(params.original_graph_save_path)
-    generated_data = torch.load(params.generated_graph_save_path)
+    #original_data = torch.load("/mnt/homenfsxx/rokubo/data/diffusion_model/wandb/run-20250110_105421-y7oeqxx0/files/original_graph.pt")
+    #generated_data = torch.load("/mnt/homenfsxx/rokubo/data/diffusion_model/wandb/run-20250110_105421-y7oeqxx0/files/generated_graph.pt")
+    original_data = torch.load(params['original_graph_save_path'])
+    generated_data = torch.load(params['generated_graph_save_path'])
     original_coords, generated_coords = [],[]
     for data in original_data:
         original_coords.append(data.pos)
     for data in generated_data:
         generated_coords.append(data[-1].pos)
+
+    
+    original_only_CN2, generated_only_CN2 = [],[]
+    for i in range(len(original_coords)):
+        norm_list = []
+        for j in range(original_coords[i].shape[0]):
+            norm_list.append(torch.norm(original_coords[i][j]-original_coords[i][0]).item())
+        norm_list = np.array(norm_list)
+        if len(norm_list) < 3:
+            continue
+        small_index = np.argsort(norm_list)
+        tensor = torch.zeros((3,3))
+        tensor[0] = original_coords[i][small_index[0]]
+        tensor[1] = original_coords[i][small_index[1]]
+        tensor[2] = original_coords[i][small_index[2]]
+        original_only_CN2.append(tensor)
+    for i in range(len(generated_coords)):
+        norm_list = []
+        for j in range(generated_coords[i].shape[0]):
+            norm_list.append(torch.norm(generated_coords[i][j]-generated_coords[i][0]).item())
+        norm_list = np.array(norm_list)
+        if len(norm_list) < 3:
+            continue
+        small_index = np.argsort(norm_list)
+        tensor = torch.zeros((3,3))
+        tensor[0] = generated_coords[i][small_index[0]]
+        tensor[1] = generated_coords[i][small_index[1]]
+        tensor[2] = generated_coords[i][small_index[2]]
+        generated_only_CN2.append(tensor)
+
+    original_coords = original_only_CN2
+    generated_coords = generated_only_CN2
+
+
+
     theta_list, phi_list = [],[]
     for i in range(len(original_coords)):
         theta_list.append(calculate_angle_for_CN2(original_coords[i]))
@@ -144,7 +197,8 @@ if __name__ == '__main__':
             if average_theta_per_graph[i] > average_phi_per_graph[i]-std_phi_per_graph[i]:
                 num_within_range += 1
     """
-    r2 = r2_score(average_theta_per_graph,average_phi_per_graph)
+
+    r2 = r2score(average_theta_per_graph,average_phi_per_graph)
     ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
     ax_text.axis('off')
 
@@ -158,8 +212,8 @@ if __name__ == '__main__':
     ax_hist_theta.get_xaxis().set_visible(False)
     ax_hist_phi.get_yaxis().set_visible(False)
     plt.subplots_adjust(wspace=0.05,hspace=0.05)
-    plt.savefig('./comparison_between_original_and_gen/about_angle/angle_comparison_spectrum_' + model_name + '.png')
-    image = Image.open('./comparison_between_original_and_gen/about_angle/angle_comparison_spectrum_' + model_name + '.png')
+    plt.savefig(os.path.join(run.dir,"angle_CN2_eval.png"))
+    image = Image.open(os.path.join(run.dir,"angle_CN2_eval.png"))
     run.log({'angle': wandb.Image(image)})
     plt.close()
     
@@ -218,14 +272,14 @@ if __name__ == '__main__':
     ax_scatter.legend()
 
     ax_text = fig.add_subplot(gs[0,1])
-    r2 = r2_score(average_length_of_original,average_length_of_generated)
+    r2 = r2score(average_length_of_original,average_length_of_generated)
     ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
     ax_text.axis('off')
 
 
     ax_hist_theta = fig.add_subplot(gs[0,0],sharex=ax_scatter)
     ax_hist_phi = fig.add_subplot(gs[1,1],sharey=ax_scatter)
-    ax_text = fig.add_subplot(gs[0,1])
+    #ax_text = fig.add_subplot(gs[0,1])
     #ax_text.text(0.5,0.5,'wasserstein_distance:\n{:.2f}'.format(distance),fontsize=12,ha='center',va='center')
     #ax_text.axis('off')
     ax_hist_theta.hist(average_length_of_original,bins=50,orientation='vertical')
@@ -233,8 +287,8 @@ if __name__ == '__main__':
     ax_hist_theta.get_xaxis().set_visible(False)
     ax_hist_phi.get_yaxis().set_visible(False)
     plt.subplots_adjust(wspace=0.05,hspace=0.05)
-    plt.savefig('/mnt/homenfsxx/rokubo/data/diffusion_model/comparison_between_original_and_gen/about length/length_comparison_between_original_and_gen_except_180_' + model_name + '.png')
-    image = Image.open('/mnt/homenfsxx/rokubo/data/diffusion_model/comparison_between_original_and_gen/about length/length_comparison_between_original_and_gen_except_180_' + model_name + '.png')
+    plt.savefig(os.path.join(run.dir,"length_CN2_eval.png"))
+    image = Image.open(os.path.join(run.dir,"length_CN2_eval.png"))
     run.log({'bond length': wandb.Image(image)})
     plt.close()
     run.finish()

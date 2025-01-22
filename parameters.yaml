@@ -1,29 +1,30 @@
-L: 7
+L: 10
 atom_type_size: 2
-batch_size: 32
-compressed_spectrum_size: 32
+batch_size: 1
+compressed_spectrum_size: 50
 compressor_hidden_dim:
-- 50
+- 100
 conditional: true
 d_size: 1
-h_hidden_size:
-- 128
-lr: 0.0001
-m_hidden_size:
-- 128
+exO_size: 1
+give_exO: true
+h_hidden_size: 1024
+lr: 1.0e-05
+m_hidden_size: 1024
 m_size: 128
 max_grad_norm: 100
 noise_precision: 0.001
-noise_schedule_power : 2.0
-num_diffusion_timestep: 3000
+noise_schedule: predefined
+noise_schedule_power: 2.0
+num_diffusion_timestep: 1000
 num_epochs: 3000
 onehot_scaling_factor: 1.0
-patience: 100
+optimizer: RAdamScheduleFree
+patience: 5000
 seed: 2024
-spectrum_size: 100
+spectrum_size: 200
 t_size: 1
-to_compress_spectrum: true
-weight_decay: 0
-x_hidden_size:
-- 128
+to_compress_spectrum: false
+weight_decay: 1.0e-12
+x_hidden_size: 1024
 x_size: 3

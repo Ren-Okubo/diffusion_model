@@ -183,7 +183,7 @@ if __name__ == "__main__":
         if noise_schedule == 'learned':
             param_list_for_optim = list(egnn.parameters())+list(diffusion_process.gamma.parameters())
         else:
-            param_list_fro_optim = list(egnn.parameters())
+            param_list_for_optim = list(egnn.parameters())
 
     #optimizer = optim.Adam(param_list_for_optim,lr=lr,weight_decay=weight_decay)
     optimizer = RAdamScheduleFree(param_list_for_optim,lr=lr,weight_decay=weight_decay)

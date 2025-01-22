@@ -38,6 +38,7 @@ def kabsch_torch(P, Q):
     # Validate right-handed coordinate system
     if torch.det(torch.matmul(Vt.transpose(0, 1), U.transpose(0, 1))) < 0.0:
         Vt = Vt.clone()
+        #Vt[-1, :] *= -1.0
         Vt[:, -1] *= -1.0
 
     # Optimal rotation
@@ -45,6 +46,47 @@ def kabsch_torch(P, Q):
 
     # RMSD
     rmsd = torch.sqrt(torch.sum(torch.square(torch.matmul(p, R.transpose(0, 1)) - q)) / P.shape[0])
+
+    return R, t, rmsd
+
+def kabsch_numpy(P, Q):
+    """
+    Computes the optimal rotation and translation to align two sets of points (P -> Q),
+    and their RMSD.
+
+    :param P: A Nx3 matrix of points
+    :param Q: A Nx3 matrix of points
+    :return: A tuple containing the optimal rotation matrix, the optimal
+             translation vector, and the RMSD.
+    """
+    assert P.shape == Q.shape, "Matrix dimensions must match"
+
+    # Compute centroids
+    centroid_P = np.mean(P, axis=0)
+    centroid_Q = np.mean(Q, axis=0)
+
+    # Optimal translation
+    t = centroid_Q - centroid_P
+
+    # Center the points
+    p = P - centroid_P
+    q = Q - centroid_Q
+
+    # Compute the covariance matrix
+    H = np.dot(p.T, q)
+
+    # SVD
+    U, S, Vt = np.linalg.svd(H)
+
+    # Validate right-handed coordinate system
+    if np.linalg.det(np.dot(Vt.T, U.T)) < 0.0:
+        Vt[-1, :] *= -1.0
+
+    # Optimal rotation
+    R = np.dot(Vt.T, U.T)
+
+    # RMSD
+    rmsd = np.sqrt(np.sum(np.square(np.dot(p, R.T) - q)) / P.shape[0])
 
     return R, t, rmsd
 
@@ -58,7 +100,7 @@ def evaluate_by_rmsd(original_graph_list,generated_graph_list):
         generated_graph = generated_graph_list[i][-1]
         if original_graph.pos.shape[0] == 1:
             continue
-        _,_,rmsd_value = kabsch_torch(original_graph.pos.to('cuda'),generated_graph.pos.to('cuda'))
+        _,_,rmsd_value = kabsch_numpy(original_graph.pos.cpu().numpy(),generated_graph.pos.cpu().numpy())
         rmsd_value_list.append(rmsd_value)
         id_list.append(original_graph.id)
         original_coords_list.append(original_graph)
