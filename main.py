@@ -23,7 +23,7 @@ from torch.utils.data import random_split
 sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
 from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
 from loss_calculation import kabsch_torch
-from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork, evaluate_by_rmsd_and_atom_type_score, define_optimizer
+from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork, evaluate_by_rmsd_and_atom_type_eval, define_optimizer
 
 
 if __name__ == '__main__':
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #parameterの読み込み
-    with open ('/mnt/homenfsxx/rokubo/data/diffusion_model/parameters.yaml','r') as file:
+    with open ('parameters.yaml','r') as file:
         prms = yaml.safe_load(file)
     jst=pytz.timezone('Asia/Tokyo')
     now = datetime.datetime.now(jst)
@@ -256,18 +256,22 @@ if __name__ == '__main__':
         plt.close()
         
         #生成したグラフのrmsd,atom_type_scoreを計算し、ソート
-        sorted_id_rmsd_atomscore_original_generated_list = evaluate_by_rmsd_and_atom_type_score(original_graph_list,generated_graph_list)
+        sorted_id_rmsd_atomeval_original_generated_list = evaluate_by_rmsd_and_atom_type_eval(original_graph_list,generated_graph_list)
 
-        soretd_id_list, sorted_rmsd_list, sorted_atom_type_score_list, sorted_original_graph_list, sorted_generated_graph_list = zip(*sorted_id_rmsd_atomscore_original_generated_list)
+        soretd_id_list, sorted_rmsd_list, sorted_atom_type_eval_list, sorted_original_graph_list, sorted_generated_graph_list = zip(*sorted_id_rmsd_atomeval_original_generated_list)
         sorted_rmsd_list = torch.tensor(sorted_rmsd_list).cpu().numpy()
-        sorted_atom_type_score_list = torch.tensor(sorted_atom_type_score_list).cpu().numpy()
+        sorted_atom_type_eval_list = torch.tensor(sorted_atom_type_eval_list).cpu().numpy()
+        density_of_O_for_original = [i[0] for i in sorted_atom_type_eval_list]
+        density_of_O_for_generated = [i[1] for i in sorted_atom_type_eval_list]
         fig, ax = plt.subplots()
-        ax.plot(sorted_rmsd_list,sorted_atom_type_score_list,'o')
-        ax.set_xlabel('rmsd')
-        ax.set_ylabel('atom_type_score')
-        ax.set_xscale('log')
-        ax.set_title('rmsd and atom_type_score')
-        wandb.log({'rmsd_and_atom_type_score':wandb.Image(fig)})
+        ax.plot(density_of_O_for_original,density_of_O_for_generated,'o')
+        ax.plot([0,1],[0,1],'-',color='red')
+        ax.set_xlabel('density of O for original')
+        ax.set_ylabel('density of O for generated')
+        ax.set_title('atom_type_eval')
+        ax.set_xlim(0,1)
+        ax.set_ylim(0,1)
+        wandb.log({'atom_type_eval':wandb.Image(fig)})
         plt.close()
 
         

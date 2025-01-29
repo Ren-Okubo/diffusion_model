@@ -9,6 +9,7 @@ import numpy as np
 from scipy.stats import wasserstein_distance
 from matplotlib.gridspec import GridSpec
 
+
 def calculate_wasserstein_distance(rdf1, rdf2):
     """
     2つのRDFのWasserstein距離を計算する関数
@@ -133,9 +134,12 @@ if __name__ == '__main__':
     #generated_graph_save_path = input('generated_graph_save_path:')
     #original_graph_save_path = input('original_graph_save_path:')
     
-    generated_graph_list = torch.load(generated_graph_save_path)
-    original_graph_list = torch.load(original_graph_save_path)
-
+    if os.path.exists(generated_graph_save_path):
+        generated_graph_list = torch.load(generated_graph_save_path)
+        original_graph_list = torch.load(original_graph_save_path)
+    else:
+        generated_graph_list = torch.load(generated_graph_save_path.replace('/mnt',''))
+        original_graph_list = torch.load(original_graph_save_path.replace('/mnt',''))
     gs = GridSpec(2,2,height_ratios=[1,1],width_ratios=[1,1])
     fig = plt.figure(figsize=(12,8))
     ax_cos =fig.add_subplot(gs[0,0])

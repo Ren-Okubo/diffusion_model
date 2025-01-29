@@ -41,6 +41,7 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--project_name', type=str, required=True)
     argparser.add_argument('--run_id', type=str, required=True)
+    argparser.add_argument('-e','--errorbar',type=bool,default=False)
     args = argparser.parse_args()
 
     run = wandb.init(project=args.project_name, id=args.run_id, resume='must')
@@ -83,8 +84,12 @@ if __name__ == '__main__':
 
     #original_data = torch.load("/mnt/homenfsxx/rokubo/data/diffusion_model/wandb/run-20250110_105421-y7oeqxx0/files/original_graph.pt")
     #generated_data = torch.load("/mnt/homenfsxx/rokubo/data/diffusion_model/wandb/run-20250110_105421-y7oeqxx0/files/generated_graph.pt")
-    original_data = torch.load(params['original_graph_save_path'])
-    generated_data = torch.load(params['generated_graph_save_path'])
+    if os.path.exists(params['original_graph_save_path']):
+        original_data = torch.load(params['original_graph_save_path'])
+        generated_data = torch.load(params['generated_graph_save_path'])
+    else:
+        original_data = torch.load(params['original_graph_save_path'].replace('/mnt',''))
+        generated_data = torch.load(params['generated_graph_save_path'].replace('/mnt',''))
     original_coords, generated_coords = [],[]
     for data in original_data:
         original_coords.append(data.pos)
@@ -176,9 +181,13 @@ if __name__ == '__main__':
 
     
     ax_scatter.plot([0,180],[0,180],zorder=3,alpha=0.7)
-    ax_scatter.plot(theta_list,phi_list,'o',markersize=1.5)
-    #ax_scatter.errorbar(average_theta_per_graph,average_phi_per_graph,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
     ax_scatter.plot(average_theta_per_graph,average_phi_per_graph,'o',markersize=3,color='blue',label='average per graph')
+
+    if args.errorbar:
+        ax_scatter.errorbar(average_theta_per_graph,average_phi_per_graph,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
+    else:
+        ax_scatter.plot(theta_list,phi_list,'o',markersize=1.5)
+    #ax_scatter.errorbar(average_theta_per_graph,average_phi_per_graph,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
     ax_scatter.set_xlabel('theta')
     ax_scatter.set_ylabel('phi')
     ax_scatter.set_xlim(60,180)
@@ -212,9 +221,14 @@ if __name__ == '__main__':
     ax_hist_theta.get_xaxis().set_visible(False)
     ax_hist_phi.get_yaxis().set_visible(False)
     plt.subplots_adjust(wspace=0.05,hspace=0.05)
-    plt.savefig(os.path.join(run.dir,"angle_CN2_eval.png"))
-    image = Image.open(os.path.join(run.dir,"angle_CN2_eval.png"))
-    run.log({'angle': wandb.Image(image)})
+    if args.errorbar:
+        plt.savefig(os.path.join(run.dir,"angle_CN2_eval_errorbar.png"))
+        image = Image.open(os.path.join(run.dir,"angle_CN2_eval_errorbar.png"))
+        run.log({'angle errorbar': wandb.Image(image)})
+    else:
+        plt.savefig(os.path.join(run.dir,"angle_CN2_eval.png"))
+        image = Image.open(os.path.join(run.dir,"angle_CN2_eval.png"))
+        run.log({'angle': wandb.Image(image)})
     plt.close()
     
     
@@ -262,8 +276,11 @@ if __name__ == '__main__':
     distance = stats.wasserstein_distance(bin_centers_theta,bin_centers_phi,u_weights=hist_theta,v_weights=hist_phi)
     
     ax_scatter.plot([0,5],[0,5],zorder=3,alpha=0.7)
-    ax_scatter.plot(theta_length,phi_length,'o',markersize=1.5)
     ax_scatter.plot(average_length_of_original,average_length_of_generated,'o',markersize=3,label='average per graph',color='blue')
+    if args.errorbar:
+        ax_scatter.errorbar(average_length_of_original,average_length_of_generated,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
+    else:
+        ax_scatter.plot(theta_length,phi_length,'o',markersize=1.5)
     #ax_scatter.errorbar(average_length_of_original,average_length_of_generated,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
     ax_scatter.set_xlabel('mean of 2 lengths of original')
     ax_scatter.set_ylabel('mean of 2 lengths of generated')
@@ -287,9 +304,14 @@ if __name__ == '__main__':
     ax_hist_theta.get_xaxis().set_visible(False)
     ax_hist_phi.get_yaxis().set_visible(False)
     plt.subplots_adjust(wspace=0.05,hspace=0.05)
-    plt.savefig(os.path.join(run.dir,"length_CN2_eval.png"))
-    image = Image.open(os.path.join(run.dir,"length_CN2_eval.png"))
-    run.log({'bond length': wandb.Image(image)})
+    if args.errorbar:
+        plt.savefig(os.path.join(run.dir,"length_CN2_eval_errorbar.png"))
+        image = Image.open(os.path.join(run.dir,"length_CN2_eval_errorbar.png"))
+        run.log({'bond length errorbar': wandb.Image(image)})
+    else:
+        plt.savefig(os.path.join(run.dir,"length_CN2_eval.png"))
+        image = Image.open(os.path.join(run.dir,"length_CN2_eval.png"))
+        run.log({'bond length': wandb.Image(image)})
     plt.close()
     run.finish()
     
