@@ -20,7 +20,7 @@ from schedulefree import RAdamScheduleFree
 import torch_geometric.datasets as datasets
 from torch.utils.data import random_split
 
-sys.path.append('/mnt/homenfsxx/rokubo/data/diffusion_model/parts/')
+sys.path.append('parts/')
 from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, generate, EarlyStopping
 from loss_calculation import kabsch_torch
 from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork, evaluate_by_rmsd_and_atom_type_eval, define_optimizer
@@ -264,6 +264,7 @@ if __name__ == '__main__':
         density_of_O_for_original = [i[0] for i in sorted_atom_type_eval_list]
         density_of_O_for_generated = [i[1] for i in sorted_atom_type_eval_list]
         fig, ax = plt.subplots()
+        plt.figure((10,10))
         ax.plot(density_of_O_for_original,density_of_O_for_generated,'o')
         ax.plot([0,1],[0,1],'-',color='red')
         ax.set_xlabel('density of O for original')

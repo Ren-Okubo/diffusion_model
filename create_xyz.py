@@ -4,6 +4,8 @@ import torch
 import itertools
 import argparse
 import wandb
+from scipy.optimize import linear_sum_assignment
+
 
 def write_xyz_for_pos_generation(save_path,original_pos,generated_pos,comment=None):
     num_atom = original_pos.shape[0]
@@ -33,9 +35,9 @@ def write_xyz(save_path,graph,comment=None):
         f.write(str(num_atom)+'\n')
         f.write(f'{comment}\n')
         for i in range(num_atom):
-            if torch.equal(graph.x[i],Si_tensor):
+            if torch.equal(graph.x[i].to('cuda'),Si_tensor):
                 atom_type = 'Si'
-            elif torch.equal(graph.x[i],O_tensor):
+            elif torch.equal(graph.x[i].to('cuda'),O_tensor):
                 atom_type = 'O'
             else:
                 print('atom type error')
@@ -55,16 +57,9 @@ def kabsch_numpy(P, Q):
     """
     assert P.shape == Q.shape, "Matrix dimensions must match"
 
-    # Compute centroids
-    centroid_P = np.mean(P, axis=0)
-    centroid_Q = np.mean(Q, axis=0)
-
-    # Optimal translation
-    t = centroid_Q - centroid_P
-
     # Center the points
-    p = P - centroid_P
-    q = Q - centroid_Q
+    p = P - P[0]
+    q = Q - Q[0]
 
     # Compute the covariance matrix
     H = np.dot(p.T, q)
@@ -82,17 +77,23 @@ def kabsch_numpy(P, Q):
     # RMSD
     rmsd = np.sqrt(np.sum(np.square(np.dot(p, R.T) - q)) / P.shape[0])
 
-    original_coords = q
-    generated_coords = np.dot(p, R.T)
+    return R, rmsd
 
-    return R, t, rmsd, original_coords, generated_coords
+def hungarian_algorithm(P,Q):
+    D = np.linalg.norm(P[:, None, :] - Q[None, :, :], axis=-1)
+    row_ind, col_ind = linear_sum_assignment(D)
+    return row_ind, col_ind
 
-def return_index_within_2ang(position):
-    index_list = []
-    for i in range(1,position.shape[0]):
-        if torch.norm(position[i]-position[0]) < 2.0:
-            index_list.append(i)
-    return index_list
+def return_near_from_exO(position):
+    exO = position[0]
+    length_list, index_list = [], []
+    for i in range(1,len(position)):
+        length_list.append(torch.norm(position[i]-exO).item())
+        index_list.append(i)
+    length_index_list = list(zip(length_list,index_list))
+    sorted_legnth_index_list = sorted(length_index_list,key=lambda x:x[0])
+    sorted_length_list, sorted_index_list = zip(*sorted_legnth_index_list)
+    return sorted_index_list[:5]
 
 
 if __name__ == '__main__':
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     generated_graph_save_path = config['generated_graph_save_path']
     original_graph_save_path = config['original_graph_save_path']
 
-    os.makedirs(os.path.join('/home/rokubo/jbod/data/diffusion_model/result_generated',args.run_id),exist_ok=True)
+    os.makedirs(os.path.join('/home/rokubo/jbod/data/diffusion_model/xyz',args.run_id),exist_ok=True)
     
     original_graph_list = torch.load(original_graph_save_path)
     generated_graph_list = torch.load(generated_graph_save_path)
@@ -116,58 +117,78 @@ if __name__ == '__main__':
         original_graph = original_graph_list[i]
         generated_graph = generated_graph_list[i][-1]
 
-        id = f'{original_graph.id}_{i}'
+        id = f'{original_graph.id}_{i%5+1}'
         #id = f'{args.run_id}_{i}'
-        id_path = os.path.join('/home/rokubo/jbod/data/diffusion_model/result_generated',args.run_id,id)
-        if os.path.exists(id_path):
+        id_path = os.path.join('/home/rokubo/jbod/data/diffusion_model/xyz',args.run_id,id)
+        """if os.path.exists(id_path):
             #continue
-            pass
+            pass"""
         os.makedirs(id_path,exist_ok=True)
-        
 
-        write_xyz_for_pos_generation(os.path.join(id_path,'original_generated.xyz'),original_graph.pos,generated_graph.pos,comment=id)
 
-        generated_index_list = return_index_within_2ang(generated_graph.pos)
-        original_index_list = return_index_within_2ang(original_graph.pos)
-        if len(original_index_list) == 0 or len(generated_index_list) == 0:
-            continue
-        if len(original_index_list) != len(generated_index_list):
-            continue
-        original_pos_within_2ang = original_graph.pos[[0]+original_index_list]
-        permuted_index_list = list(itertools.permutations(generated_index_list))
         min_rmsd = 1e+10
-        min_permuted_index_list = None
-        for perm in permuted_index_list:
-            permuted_pos = generated_graph.pos[[0]+list(perm)]
-            R, t, rmsd, original_coords, generated_coords = kabsch_numpy(permuted_pos.cpu().numpy(),original_pos_within_2ang.cpu().numpy())
-            if rmsd < min_rmsd:
-                min_rmsd = rmsd
-                min_permuted_index_list = perm
-                min_R = R
-                min_t = t
-
-        P = generated_graph.pos.cpu().numpy()
-        Q = original_graph.pos.cpu().numpy()
-        p = P - np.mean(P, axis=0)
-        q = Q - np.mean(Q, axis=0)
-        rmsd_for_full_position = np.sqrt(np.sum(np.square(np.dot(p, min_R.T) - q)) / P.shape[0])
-        aligned_original_pos = q
-        aligned_generated_pos = np.dot(p, min_R.T)
-        """
-        rmsd_for_full_position = np.sqrt(np.sum(np.square(np.dot((P+min_t), min_R.T) - Q)) / P.shape[0])
-        aligned_generated_pos = np.dot((P+min_t), min_R.T)
-        aligned_original_pos = Q
-        """
-        """
-        minus = aligned_generated_pos[0]
-        for i in range(aligned_generated_pos.shape[0]):
-            aligned_generated_pos[i] -= minus
-        minus = aligned_original_pos[0]
-        for i in range(aligned_original_pos.shape[0]):
-            aligned_original_pos[i] -= minus
-        """
-
-        aligned_generated_pos = torch.from_numpy(aligned_generated_pos)
-        aligned_original_pos = torch.from_numpy(aligned_original_pos)
-        write_xyz_for_pos_generation(os.path.join(id_path,'aligned_generated.xyz'),aligned_original_pos,aligned_generated_pos,comment=str(rmsd_for_full_position))
-
+        min_R = None
+        if original_graph.pos.shape[0] < 6:
+            check_original = original_graph.pos
+            check_generated = torch.zeros_like(generated_graph.pos)
+            check_generated[0] = generated_graph.pos[0]
+            perms = list(itertools.permutations(range(1,original_graph.pos.shape[0])))
+            for perm in perms:
+                for j in range(len(perm)):
+                    check_generated[j+1] = generated_graph.pos[perm[j]]
+                R, rmsd = kabsch_numpy(check_generated.cpu().numpy(),check_original.cpu().numpy())
+                if rmsd < min_rmsd:
+                    min_rmsd = rmsd
+                    min_R = R
+                    min_perm = perm
+            generated_graph.pos = check_generated
+            aligned_generated_x = torch.zeros_like(generated_graph.x)
+            aligned_generated_x[0] = generated_graph.x[0]
+            for j in range(len(min_perm)):
+                aligned_generated_x[j+1] = generated_graph.x[min_perm[j]]
+            generated_graph.x = aligned_generated_x
+            comment = f'{id} {min_rmsd}'
+            original_save_path =os.path.join(id_path,'original.xyz')
+            generated_save_path = os.path.join(id_path,'generated.xyz')
+            write_xyz(original_save_path,original_graph,comment=comment)
+            write_xyz(generated_save_path,generated_graph,comment=comment)
+        else:
+            generated_index_list = return_near_from_exO(generated_graph.pos)
+            original_index_list = return_near_from_exO(original_graph.pos)
+            original_near_exO = torch.zeros(5,3)
+            generated_near_exO = torch.zeros(5,3)
+            original_near_exO[0] = original_graph.pos[0]
+            generated_near_exO[0] = generated_graph.pos[0]
+            perms = list(itertools.permutations(range(4)))
+            min_rmsd = 1e+10
+            min_perm = None
+            for j in range(4):
+                original_near_exO[j+1] = original_graph.pos[original_index_list[j]]
+            for perm in perms:
+                for i in perm:
+                    generated_near_exO[i+1] = generated_graph.pos[generated_index_list[perm[i]]]
+                R, rmsd = kabsch_numpy(generated_near_exO.cpu().numpy(),original_near_exO.cpu().numpy())
+                if rmsd < min_rmsd:
+                    min_rmsd = rmsd
+                    min_R = R
+                    min_perm = perm
+            generated_pos = generated_graph.pos.cpu().numpy()
+            original_pos = original_graph.pos.cpu().numpy()
+            generated_pos = generated_pos - generated_pos[0]
+            original_pos = original_pos - original_pos[0]
+            aligned_generated_pos = np.dot(generated_pos, min_R.T)
+            row_ind, col_ind = hungarian_algorithm(original_pos,aligned_generated_pos)
+            adjusted_generated_pos = aligned_generated_pos[col_ind]
+            adjusted_original_pos = original_pos[row_ind]
+            generated_graph.pos = torch.from_numpy(adjusted_generated_pos)      
+            original_graph.pos = torch.from_numpy(adjusted_original_pos)     
+            adjusted_generated_x = generated_graph.x[col_ind]
+            adjusted_original_x = original_graph.x[row_ind]
+            generated_graph.x = adjusted_generated_x
+            original_graph.x = adjusted_original_x
+            _, rmsd = kabsch_numpy(adjusted_generated_pos,adjusted_original_pos)
+            comment = f'{id} {rmsd}'
+            original_save_path =os.path.join(id_path,'original.xyz')
+            generated_save_path = os.path.join(id_path,'generated.xyz')
+            write_xyz(original_save_path,original_graph,comment=comment)
+            write_xyz(generated_save_path,generated_graph,comment=comment)

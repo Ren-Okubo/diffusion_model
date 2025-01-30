@@ -88,10 +88,10 @@ def evaluate_by_rmsd(original_graph_list,generated_graph_list):
     sorted_id_rmsd_original_generated_list = sorted(id_rmsd_original_generated_list,key=lambda x:x[1])
     return sorted_id_rmsd_original_generated_list
 
-def evaluate_by_rmsd_and_atom_type_score(original_graph_list,generated_graph_list):
+def evaluate_by_rmsd_and_atom_type_eval(original_graph_list,generated_graph_list):
     id_list = []
     rmsd_value_list = []
-    atom_type_score_list = []
+    atom_type_eval_list = []
     original_coords_list, generated_coords_list = [],[]
     for i in range(len(original_graph_list)):
         original_graph = original_graph_list[i]
@@ -100,18 +100,20 @@ def evaluate_by_rmsd_and_atom_type_score(original_graph_list,generated_graph_lis
             continue
         _,_,rmsd_value = kabsch_torch(original_graph.pos,generated_graph.pos)
         rmsd_value_list.append(rmsd_value)
-        atom_type_score = 0
+        num_of_O_for_original = 0
+        num_of_O_for_generated = 0
         for i in range(original_graph.x.shape[0]):
-            if torch.equal(original_graph.x[i],generated_graph.x[i]):
-                atom_type_score += 1
-        atom_type_score = atom_type_score / original_graph.x.shape[0]
-        atom_type_score_list.append(atom_type_score)
+            if torch.equal(original_graph.x[0],original_graph.x[i]):
+                num_of_O_for_original += 1
+            if torch.equal(original_graph.x[0],generated_graph.x[i]):
+                num_of_O_for_generated += 1
+        atom_type_eval_list.append([num_of_O_for_original/original_graph.x.shape[0],num_of_O_for_generated/generated_graph.x.shape[0]])
         id_list.append(original_graph.id)
         original_coords_list.append(original_graph)
         generated_coords_list.append(generated_graph)
-    id_rmsd_original_generated_list = list(zip(id_list,rmsd_value_list,atom_type_score_list,original_coords_list,generated_coords_list)) #rmsdの値でソート
-    sorted_id_rmsd_atomscore_original_generated_list = sorted(id_rmsd_original_generated_list,key=lambda x:x[1])
-    return sorted_id_rmsd_atomscore_original_generated_list
+    id_rmsd_original_generated_list = list(zip(id_list,rmsd_value_list,atom_type_eval_list,original_coords_list,generated_coords_list)) #rmsdの値でソート
+    sorted_id_rmsd_atomeval_original_generated_list = sorted(id_rmsd_original_generated_list,key=lambda x:x[1])
+    return sorted_id_rmsd_atomeval_original_generated_list
 
 def define_optimizer(params,nn_dict,diffusion_process,optim_type:str):
     assert optim_type in ['Adam','AdamW','RAdamScheduleFree']

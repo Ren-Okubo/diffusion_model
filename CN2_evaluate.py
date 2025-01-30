@@ -181,12 +181,12 @@ if __name__ == '__main__':
 
     
     ax_scatter.plot([0,180],[0,180],zorder=3,alpha=0.7)
-    ax_scatter.plot(average_theta_per_graph,average_phi_per_graph,'o',markersize=3,color='blue',label='average per graph')
 
     if args.errorbar:
         ax_scatter.errorbar(average_theta_per_graph,average_phi_per_graph,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
     else:
         ax_scatter.plot(theta_list,phi_list,'o',markersize=1.5)
+    ax_scatter.plot(average_theta_per_graph,average_phi_per_graph,'o',markersize=3,color='blue',label='average per graph')
     #ax_scatter.errorbar(average_theta_per_graph,average_phi_per_graph,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
     ax_scatter.set_xlabel('theta')
     ax_scatter.set_ylabel('phi')
@@ -276,11 +276,11 @@ if __name__ == '__main__':
     distance = stats.wasserstein_distance(bin_centers_theta,bin_centers_phi,u_weights=hist_theta,v_weights=hist_phi)
     
     ax_scatter.plot([0,5],[0,5],zorder=3,alpha=0.7)
-    ax_scatter.plot(average_length_of_original,average_length_of_generated,'o',markersize=3,label='average per graph',color='blue')
     if args.errorbar:
         ax_scatter.errorbar(average_length_of_original,average_length_of_generated,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
     else:
         ax_scatter.plot(theta_length,phi_length,'o',markersize=1.5)
+    ax_scatter.plot(average_length_of_original,average_length_of_generated,'o',markersize=3,label='average per graph',color='blue')
     #ax_scatter.errorbar(average_length_of_original,average_length_of_generated,yerr=std_phi_per_graph,fmt='none',ecolor='red',capsize=3,capthick=1,alpha=0.5)
     ax_scatter.set_xlabel('mean of 2 lengths of original')
     ax_scatter.set_ylabel('mean of 2 lengths of generated')

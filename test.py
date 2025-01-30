@@ -146,7 +146,7 @@ if __name__ == '__main__':
     #model_path = str(input('model_path: '))
     model_path = 'egnn_' + params['now']
 
-    state_dicts = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
+    state_dicts = torch.load('./model_state/model_to_predict_epsilon/'+model_path+'.pth',weights_only=True)
     egnn.load_state_dict(state_dicts['egnn'])
     egnn.eval()
     if to_compress_spectrum:
@@ -172,6 +172,7 @@ if __name__ == '__main__':
     #dataset = torch.load('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/dataset_only_CN2_Si.pt')
     #dataset = torch.load(f'/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/first_nearest/{params[dataset]}.pt')
     dataset = torch.load(params['dataset_path'])
+    #dataset = torch.load('/home/rokubo/jbod/data/diffusion_model/dataset/within_3_ang_before0129/dataset.pt')
     train_data, val_data, test_data = setupdata.split(dataset)
 
     
@@ -237,7 +238,9 @@ if __name__ == '__main__':
                 x = torch.tensor(atom_type,dtype=torch.float32).to(device)
                 """
                 x = data.x.to(device)
-                graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=data.spectrum.to(device),id=data.id)#
+                #graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=data.spectrum.to(device),id=data.id)#
+                graph = Data(x=x,edge_index=data.edge_index.to(device),pos=initial_coords,spectrum=data.spectrum.to(device),id=data.id)#
+
                 #test_spectrum = torch.zeros((num_atom,data.spectrum.shape[1])).to(device)
                 #graph = Data(x=x,edge_index=torch.tensor(edge_index,dtype=torch.long).t().contiguous().to(device),pos=initial_coords,spectrum=test_spectrum)#
 
