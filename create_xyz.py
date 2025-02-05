@@ -141,7 +141,9 @@ if __name__ == '__main__':
                     min_rmsd = rmsd
                     min_R = R
                     min_perm = perm
-            generated_graph.pos = check_generated
+            generated_graph.pos = generated_graph.pos - generated_graph.pos[0]
+            aligned_generated_pos = np.dot(generated_graph.pos.cpu().numpy(), min_R.T)
+            generated_graph.pos = torch.from_numpy(aligned_generated_pos)
             aligned_generated_x = torch.zeros_like(generated_graph.x)
             aligned_generated_x[0] = generated_graph.x[0]
             for j in range(len(min_perm)):

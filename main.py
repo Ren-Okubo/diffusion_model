@@ -51,7 +51,7 @@ if __name__ == '__main__':
         run = wandb.init(project=args.project_name,config=prms,name=args.run_name)
     elif args.mode == 'generate_only' or args.mode == 'evaluate_only':
         run_id = input('run_id:')
-        run = wandb.init(project=args.project_name,id=run_id,name=args.run_name,resume='must')
+        run = wandb.init(project=args.project_name,id=run_id,resume='must')
         prms = run.config
 
     #メモがあればnoteに記録
@@ -161,6 +161,9 @@ if __name__ == '__main__':
     generator = torch.Generator(device=device)
     generator.manual_seed(seed)  # 任意のシード値を設定
 
+    #dataset内のグラフに孤立原子からなるグラフがある場合、削除
+    dataset = [data for data in dataset if data.pos.shape[0] > 1]
+
     #datasetの分割
     train_data, eval_data, test_data = setupdata.split(dataset)
     train_loader = DataLoader(train_data,batch_size=batch_size,shuffle=True,generator=generator)
@@ -240,7 +243,7 @@ if __name__ == '__main__':
         #rmsdの値を保存 [(id,rmsd,original_graph,generated_graph),...]
         rmsd_save_path = os.path.join(wandb.run.dir,'rmsd.pt')
         torch.save(sorted_id_rmsd_original_generated_list,rmsd_save_path)
-        wandb.config.update({'rmsd_save_path':rmsd_save_path})
+        wandb.config.update({'rmsd_save_path':rmsd_save_path},allow_val_change=True)
         print(f'rmsd saved at {rmsd_save_path}')
 
         #ソートしたrmsdの描画
@@ -264,7 +267,7 @@ if __name__ == '__main__':
         density_of_O_for_original = [i[0] for i in sorted_atom_type_eval_list]
         density_of_O_for_generated = [i[1] for i in sorted_atom_type_eval_list]
         fig, ax = plt.subplots()
-        plt.figure((10,10))
+        plt.figure(figsize=(10,10))
         ax.plot(density_of_O_for_original,density_of_O_for_generated,'o')
         ax.plot([0,1],[0,1],'-',color='red')
         ax.set_xlabel('density of O for original')

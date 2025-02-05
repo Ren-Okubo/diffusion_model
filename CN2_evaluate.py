@@ -96,7 +96,52 @@ if __name__ == '__main__':
     for data in generated_data:
         generated_coords.append(data[-1].pos)
 
-    
+    """
+    #第一近接がCN2の3ang_datasetのときの処理
+    original_CN2, generated_CN2 = [],[]
+    for i in range(0,len(original_coords),5):
+        check_per_graph_original, check_per_graph_generated = [],[]
+        for coord in original_coords[i:i+5]:
+            if coord.shape[0] < 3:
+                continue
+            length_check_original = []
+            index_original = []
+            for j in range(coord.shape[0]):
+                length_check_original.append(torch.norm(coord[j]-coord[0]).item())
+                index_original.append(j)
+            sorted_index_length_original = sorted(list(zip(index_original,length_check_original)),key=lambda x:x[1])
+            sorted_index_original, sorted_length_original = zip(*sorted_index_length_original)
+            if sorted_length_original[1] > 1.8 or sorted_length_original[2] > 1.8:
+                continue
+            tensor_original = torch.zeros((3,3))
+            tensor_original[0] = coord[sorted_index_original[0]]
+            tensor_original[1] = coord[sorted_index_original[1]]
+            tensor_original[2] = coord[sorted_index_original[2]]
+            check_per_graph_original.append(tensor_original)
+        for coord in generated_coords[i:i+5]:
+            if coord.shape[0] < 3:
+                continue
+            length_check_generated = []
+            index_generated = []
+            for j in range(coord.shape[0]):
+                length_check_generated.append(torch.norm(coord[j]-coord[0]).item())
+                index_generated.append(j)
+            sorted_index_length_generated = sorted(list(zip(index_generated,length_check_generated)),key=lambda x:x[1])
+            sorted_index_generated, sorted_length_generated = zip(*sorted_index_length_generated)
+            if sorted_length_generated[1] > 1.8 or sorted_length_generated[2] > 1.8:
+                continue
+            tensor_generated = torch.zeros((3,3))
+            tensor_generated[0] = coord[sorted_index_generated[0]]
+            tensor_generated[1] = coord[sorted_index_generated[1]]
+            tensor_generated[2] = coord[sorted_index_generated[2]]
+            check_per_graph_generated.append(tensor_generated)
+        if len(check_per_graph_original) == 5 and len(check_per_graph_generated) == 5:
+            original_CN2 += check_per_graph_original
+            generated_CN2 += check_per_graph_generated
+    original_coords = original_CN2
+    generated_coords = generated_CN2
+    """
+    """
     original_only_CN2, generated_only_CN2 = [],[]
     for i in range(len(original_coords)):
         norm_list = []
@@ -127,7 +172,7 @@ if __name__ == '__main__':
 
     original_coords = original_only_CN2
     generated_coords = generated_only_CN2
-
+    """
 
 
     theta_list, phi_list = [],[]
@@ -208,7 +253,17 @@ if __name__ == '__main__':
     """
 
     r2 = r2score(average_theta_per_graph,average_phi_per_graph)
-    ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
+    theta_r2, phi_r2 = [],[]
+    for i in range(len(theta_list)):
+        if np.isnan(theta_list[i]) or np.isnan(phi_list[i]):
+            pass
+        else:
+            theta_r2.append(theta_list[i])
+            phi_r2.append(phi_list[i])
+    r2_for_all = r2_score(theta_r2,phi_r2)
+    ax_text.text(0.5, 0.6, 'r2_score:\n{:.2f}'.format(r2), fontsize=12, ha='center', va='center')
+    ax_text.text(0.5, 0.4, 'r2_for_all:\n{:.2f}'.format(r2_for_all), fontsize=12, ha='center', va='center')
+    #ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
     ax_text.axis('off')
 
 
@@ -290,7 +345,17 @@ if __name__ == '__main__':
 
     ax_text = fig.add_subplot(gs[0,1])
     r2 = r2score(average_length_of_original,average_length_of_generated)
-    ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
+    theta_r2, phi_r2 = [],[]
+    for i in range(len(theta_length)):
+        if np.isnan(theta_length[i]) or np.isnan(phi_length[i]):
+            pass
+        else:
+            theta_r2.append(theta_length[i])
+            phi_r2.append(phi_length[i])
+    r2_for_all = r2_score(theta_length,phi_length)
+    ax_text.text(0.5, 0.6, 'r2_score:\n{:.2f}'.format(r2), fontsize=12, ha='center', va='center')
+    ax_text.text(0.5, 0.4, 'r2_for_all:\n{:.2f}'.format(r2_for_all), fontsize=12, ha='center', va='center')
+    #ax_text.text(0.5,0.5,'r2_score:\n{:.2f}'.format(r2),fontsize=12,ha='center',va='center')
     ax_text.axis('off')
 
 
