@@ -199,6 +199,22 @@ def fitted_intensity(coreloss_core_edge_path):
     fitted_intensities = spline(new_wavelengths)
     return fitted_intensities
 
+def fitted_intensity_wo_normalize(coreloss_core_edge_path):
+    target_text = "#  O 1    K1      O:ex"
+    line_number = find_line_number(coreloss_core_edge_path,target_text)
+    data = np.loadtxt(coreloss_core_edge_path,skiprows=line_number).T
+    smooth = 0.001
+    wavelengths = np.array(data[0])
+    wavelength_min = wavelengths.min()
+    wavelength_max = wavelengths.max()
+    intensities = np.array(data[1])
+    # InterPolatedUnivariateSplineのインスタンス化
+    spline = InterpolatedUnivariateSpline(wavelengths, intensities)
+    new_wavelengths = np.arange(-1,19,0.1)
+    # 近似曲線の強度値を計算
+    fitted_intensities = spline(new_wavelengths)
+    return fitted_intensities
+
 def get_beta_schedule(initial_beta:float, final_beta:float, num_diffusion_timestep:int) -> list:
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))

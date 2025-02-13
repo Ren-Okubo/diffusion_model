@@ -45,7 +45,7 @@ def length_from_exO(position):
     return length_list
 
 
-def RDF(position,sigma=4.0,R=5.0,dR=0.02):
+def RDF(position,sigma=4.0,R=5.0,dR=0.02,Normalize=False):
     length_list = length_from_exO(position)
     num_atom = position.shape[0]
     ro = num_atom/(4/3*np.pi*R**3)
@@ -54,7 +54,9 @@ def RDF(position,sigma=4.0,R=5.0,dR=0.02):
     RDF = []
     for r in R:
         RDF.append(sum([1 for d in length_list if r < d < r+dR])/(4*np.pi*ro*r**2*dR))
-    RDF_smoothed = gaussian_filter1d(RDF, sigma)    
+    RDF_smoothed = gaussian_filter1d(RDF, sigma)
+    if Normalize:
+        RDF_smoothed = RDF_smoothed/np.max(RDF_smoothed)    
     return RDF_smoothed
 
 def cos_similarity(a,b):

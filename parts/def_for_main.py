@@ -102,10 +102,11 @@ def evaluate_by_rmsd_and_atom_type_eval(original_graph_list,generated_graph_list
         rmsd_value_list.append(rmsd_value)
         num_of_O_for_original = 0
         num_of_O_for_generated = 0
+        O_tensor = torch.tensor([1,0],dtype=torch.long).to('cuda')
         for i in range(original_graph.x.shape[0]):
-            if torch.equal(original_graph.x[0],original_graph.x[i]):
+            if torch.equal(O_tensor,original_graph.x[i].to('cuda')):
                 num_of_O_for_original += 1
-            if torch.equal(original_graph.x[0],generated_graph.x[i]):
+            if torch.equal(O_tensor,generated_graph.x[i].to('cuda')):
                 num_of_O_for_generated += 1
         atom_type_eval_list.append([num_of_O_for_original/original_graph.x.shape[0],num_of_O_for_generated/generated_graph.x.shape[0]])
         id_list.append(original_graph.id)
