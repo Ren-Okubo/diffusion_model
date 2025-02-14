@@ -2,6 +2,7 @@ import torch
 from torch_geometric.data import Data
 import numpy as np
 import os
+import argparse
 from data_preparation import fitted_intensity, fitted_intensity_wo_normalize
 
 def degrees_to_radians(degrees):
@@ -127,63 +128,126 @@ def return_index_within_2ang(atom_list,reference_index):
     return index_list
 
 
-
-
 if __name__ == '__main__':
-    dataset = []
-    dirs = os.listdir('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files')
-    dirs = [d for d in dirs if os.path.exists(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss.cell'))]
-    for d in dirs:
-        cell_path = os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss.cell')
-        atom_list = cell_to_atom_list(cell_path)
-        for i in range(len(atom_list)):
-            if atom_list[i][0] == 'Si':
-                atom_list[i][0] = np.array([0,1])
-            elif atom_list[i][0] == 'O':
-                atom_list[i][0] = np.array([1,0])
-            elif atom_list[i][0] == 'O:ex':
-                atom_list[i][0] = np.array([1,0])
-                exO_index = i
-            else:
-                print('error')
-                exit()
-        exO_coords = torch.tensor(atom_list[exO_index][1],dtype=torch.float32)
-        for node in atom_list:
-            node[0] = torch.tensor(node[0],dtype=torch.long)
-            node[1] = torch.tensor(node[1],dtype=torch.float32) - exO_coords
-            assert node[1].dim() == 1
-        filtered_atom_index = []
-        firstNN_index_list = return_index_within_2ang(atom_list,exO_index)
-        filtered_atom_index += firstNN_index_list
-        for index in firstNN_index_list:
-            filtered_atom_index += return_index_within_2ang(atom_list,index)
-        filtered_atom_index = list(set(filtered_atom_index))
-        filtered_atom_index = [i for i in filtered_atom_index if i != exO_index]
-        filtered_atom_index = [exO_index] + filtered_atom_index
-        filtered_atom_list = [atom_list[i] for i in filtered_atom_index]
-        graph = Data(x=torch.stack([node[0] for node in filtered_atom_list]),pos=torch.stack([node[1] for node in filtered_atom_list]))
-        spectrum = fitted_intensity(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss_core_edge.dat'))
-        spectrum_raw = fitted_intensity_wo_normalize(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss_core_edge.dat'))
-        num_of_atoms = graph.x.shape[0]
-        spectrum_tensor = torch.zeros(num_of_atoms,spectrum.shape[0])
-        spectrum_tensor_raw = torch.zeros(num_of_atoms,spectrum_raw.shape[0])
-        spectrum_tensor[0] = torch.tensor(spectrum)
-        spectrum_tensor_raw[0] = torch.tensor(spectrum_raw)
-        exO_tensor = torch.zeros(num_of_atoms,1)
-        exO_tensor[0] = 1
-        edge_index_list = []
-        for i in range(num_of_atoms):
-            for j in range(num_of_atoms):
-                if i != j:
-                    edge_index_list.append([i,j])
-        edge_index = torch.tensor(edge_index_list,dtype=torch.long).t().contiguous()
-        graph.edge_index = edge_index
-        graph.spectrum = spectrum_tensor
-        graph.spectrum_raw = spectrum_tensor_raw
-        graph.exO = exO_tensor
-        graph.id = d
-        dataset.append(graph)
-    torch.save(dataset,'/home/rokubo/jbod/data/diffusion_model/dataset/2NN/dataset.pt')
-
-
-
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('--range', type=str, required=True) # '2NN' or '4NN'
+    argparser.add_argument('--save_dir_path', type=str, required=True)
+    args = argparser.parse_args()
+    assert args.range in ['2NN','4NN']
+    if args.range == '2NN':
+        dataset = []
+        dirs = os.listdir('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files')
+        dirs = [d for d in dirs if os.path.exists(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss.cell'))]
+        for d in dirs:
+            cell_path = os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss.cell')
+            atom_list = cell_to_atom_list(cell_path)
+            for i in range(len(atom_list)):
+                if atom_list[i][0] == 'Si':
+                    atom_list[i][0] = np.array([0,1])
+                elif atom_list[i][0] == 'O':
+                    atom_list[i][0] = np.array([1,0])
+                elif atom_list[i][0] == 'O:ex':
+                    atom_list[i][0] = np.array([1,0])
+                    exO_index = i
+                else:
+                    print('error')
+                    exit()
+            exO_coords = torch.tensor(atom_list[exO_index][1],dtype=torch.float32)
+            for node in atom_list:
+                node[0] = torch.tensor(node[0],dtype=torch.long)
+                node[1] = torch.tensor(node[1],dtype=torch.float32) - exO_coords
+                assert node[1].dim() == 1
+            filtered_atom_index = []
+            firstNN_index_list = return_index_within_2ang(atom_list,exO_index)
+            filtered_atom_index += firstNN_index_list
+            for index in firstNN_index_list:
+                filtered_atom_index += return_index_within_2ang(atom_list,index)
+            filtered_atom_index = list(set(filtered_atom_index))
+            filtered_atom_index = [i for i in filtered_atom_index if i != exO_index]
+            filtered_atom_index = [exO_index] + filtered_atom_index
+            filtered_atom_list = [atom_list[i] for i in filtered_atom_index]
+            graph = Data(x=torch.stack([node[0] for node in filtered_atom_list]),pos=torch.stack([node[1] for node in filtered_atom_list]))
+            spectrum = fitted_intensity(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss_core_edge.dat'))
+            spectrum_raw = fitted_intensity_wo_normalize(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss_core_edge.dat'))
+            num_of_atoms = graph.x.shape[0]
+            spectrum_tensor = torch.zeros(num_of_atoms,spectrum.shape[0])
+            spectrum_tensor_raw = torch.zeros(num_of_atoms,spectrum_raw.shape[0])
+            spectrum_tensor[0] = torch.tensor(spectrum)
+            spectrum_tensor_raw[0] = torch.tensor(spectrum_raw)
+            exO_tensor = torch.zeros(num_of_atoms,1)
+            exO_tensor[0] = 1
+            edge_index_list = []
+            for i in range(num_of_atoms):
+                for j in range(num_of_atoms):
+                    if i != j:
+                        edge_index_list.append([i,j])
+            edge_index = torch.tensor(edge_index_list,dtype=torch.long).t().contiguous()
+            graph.edge_index = edge_index
+            graph.spectrum = spectrum_tensor
+            graph.spectrum_raw = spectrum_tensor_raw
+            graph.exO = exO_tensor
+            graph.id = d
+            dataset.append(graph)
+        torch.save(dataset,os.path.join(args.save_dir_path,'dataset.pt'))
+    elif args.range == '4NN':
+        dataset = []
+        dirs = os.listdir('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files')
+        dirs = [d for d in dirs if os.path.exists(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss.cell'))]
+        for d in dirs:
+            cell_path = os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss.cell')
+            atom_list = cell_to_atom_list(cell_path)
+            for i in range(len(atom_list)):
+                if atom_list[i][0] == 'Si':
+                    atom_list[i][0] = np.array([0,1])
+                elif atom_list[i][0] == 'O':
+                    atom_list[i][0] = np.array([1,0])
+                elif atom_list[i][0] == 'O:ex':
+                    atom_list[i][0] = np.array([1,0])
+                    exO_index = i
+                else:
+                    print('error')
+                    exit()
+            exO_coords = torch.tensor(atom_list[exO_index][1],dtype=torch.float32)
+            for node in atom_list:
+                node[0] = torch.tensor(node[0],dtype=torch.long)
+                node[1] = torch.tensor(node[1],dtype=torch.float32) - exO_coords
+                assert node[1].dim() == 1
+            filtered_atom_index = []
+            firstNN_index_list = return_index_within_2ang(atom_list,exO_index)
+            filtered_atom_index += firstNN_index_list
+            for index in firstNN_index_list:
+                secondNN_index_list = return_index_within_2ang(atom_list,index)
+                filtered_atom_index += secondNN_index_list
+                for second_index in secondNN_index_list:
+                    thirdNN_index_list = return_index_within_2ang(atom_list,second_index)
+                    filtered_atom_index += thirdNN_index_list
+                    for third_index in thirdNN_index_list:
+                        fourthNN_index_list = return_index_within_2ang(atom_list,third_index)
+                        filtered_atom_index += fourthNN_index_list
+            filtered_atom_index = list(set(filtered_atom_index))
+            filtered_atom_index = [i for i in filtered_atom_index if i != exO_index]
+            filtered_atom_index = [exO_index] + filtered_atom_index
+            filtered_atom_list = [atom_list[i] for i in filtered_atom_index]
+            graph = Data(x=torch.stack([node[0] for node in filtered_atom_list]),pos=torch.stack([node[1] for node in filtered_atom_list]))
+            spectrum = fitted_intensity(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss_core_edge.dat'))
+            spectrum_raw = fitted_intensity_wo_normalize(os.path.join('/home/rokubo/jbod/data/diffusion_model/dataset/dat_files',d,'coreloss_core_edge.dat'))
+            num_of_atoms = graph.x.shape[0]
+            spectrum_tensor = torch.zeros(num_of_atoms,spectrum.shape[0])
+            spectrum_tensor_raw = torch.zeros(num_of_atoms,spectrum_raw.shape[0])
+            spectrum_tensor[0] = torch.tensor(spectrum)
+            spectrum_tensor_raw[0] = torch.tensor(spectrum_raw)
+            exO_tensor = torch.zeros(num_of_atoms,1)
+            exO_tensor[0] = 1
+            edge_index_list = []
+            for i in range(num_of_atoms):
+                for j in range(num_of_atoms):
+                    if i != j:
+                        edge_index_list.append([i,j])
+            edge_index = torch.tensor(edge_index_list,dtype=torch.long).t().contiguous()
+            graph.edge_index = edge_index
+            graph.spectrum = spectrum_tensor
+            graph.spectrum_raw = spectrum_tensor_raw
+            graph.exO = exO_tensor
+            graph.id = d
+            dataset.append(graph)
+        torch.save(dataset,os.path.join(args.save_dir_path,'dataset.pt'))
