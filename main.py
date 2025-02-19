@@ -141,7 +141,8 @@ if __name__ == '__main__':
         dataset = torch.load(dataset_path)
         wandb.config.update({'dataset_path':dataset_path})
         for data in dataset: #spectrumサイズの設定（-1~19eVがデフォルト）
-            spectrum = data.spectrum
+            #spectrum = data.spectrum
+            spectrum = data.spectrum_raw
             resized_spectrum = spectrum[:,:spectrum_size]
             data.spectrum = resized_spectrum
     elif args.test_by_provided_data == 'QM9': #QM9のデータセットを使う場合

@@ -38,7 +38,7 @@ if __name__ == '__main__':
     target_dataset = [data for data in target_dataset if data.pos.shape[0] > 1]
 
 
-    soap = SOAP(species=["O", "Si"], r_cut=6, n_max=15, l_max=10,sigma=0.1)
+    soap = SOAP(species=["O", "Si"], r_cut=8, n_max=15, l_max=10,sigma=0.1)
     best3_for_each_graph = {}
     for data in target_dataset:
         id = data.id
@@ -62,7 +62,8 @@ if __name__ == '__main__':
                 if r_data.id == sorted_id_list[i]:
                     reference_soap = soap.create(graph_to_ase_molecule(r_data))
                     similarity = cos_similarity(target_soap[0],reference_soap[0])
-                    best3_list.append({r_data.id:similarity})
+                    mse = np.mean((target_spectrum - r_data.spectrum[0].numpy())**2)
+                    best3_list.append({r_data.id:[mse,similarity]})
                     break
         best3_for_each_graph[id] = best3_list
     save_path = str(input('enter the save directory:'))
