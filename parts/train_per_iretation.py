@@ -430,8 +430,8 @@ def generate(nn_dict,test_data,params,diffusion_process):
                 #t=0におけるデータを格納
                 if torch.isfinite(graph.x).all() and torch.isfinite(graph.pos).all():
                     transition_data_per_100step.append(graph)
-                    #座標の値が現実的でないものは除外(50Å以上の座標が出力された場合)
-                    if torch.any(graph.pos > 50):
+                    #座標の値が現実的でないものは除外(1000Å以上の座標が出力された場合)
+                    if torch.any(graph.pos > 1000):
                         continue
                     num_of_generated_data += 1
 
