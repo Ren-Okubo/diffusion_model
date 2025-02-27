@@ -261,7 +261,7 @@ def eval_epoch(nn_dict,eval_loader,params,diffusion_process,optimizer):
 
     return avg_loss_val
 
-def generate(nn_dict,test_data,params,diffusion_process):
+def generate(nn_dict,test_data,params,diffusion_process,gen_num_per_spectrum=5):
     #モデルの読み込み
     egnn = nn_dict['egnn']
     egnn.eval()
@@ -292,7 +292,7 @@ def generate(nn_dict,test_data,params,diffusion_process):
             num_of_atoms = data.x.shape[0]
 
             #一つの条件に対して生成するデータ数と実際に生成したデータ数、nanの数をカウント
-            how_many_gen = 5
+            how_many_gen = gen_num_per_spectrum
             num_of_generated_data = 0
             num_of_generated_nan = 0
 

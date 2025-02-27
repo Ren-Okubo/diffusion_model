@@ -1,9 +1,11 @@
-L: 10
+L: 5
 atom_type_size: 2
 batch_size: 1
-compressed_spectrum_size: 50
+compressed_spectrum_size: 32
 compressor_hidden_dim:
+- 150
 - 100
+- 50
 conditional: true
 d_size: 1
 exO_size: 1
@@ -11,9 +13,9 @@ give_exO: true
 h_hidden_size: 1024
 lr: 1.0e-05
 m_hidden_size: 1024
-m_size: 128
+m_size: 256
 max_grad_norm: 100
-noise_precision: 0.001
+noise_precision: 1.0e-5
 noise_schedule: predefined
 noise_schedule_power: 2.0
 num_diffusion_timestep: 1000
@@ -24,7 +26,7 @@ patience: 5000
 seed: 2024
 spectrum_size: 200
 t_size: 1
-to_compress_spectrum: false
+to_compress_spectrum: true
 weight_decay: 1.0e-12
 x_hidden_size: 1024
 x_size: 3
