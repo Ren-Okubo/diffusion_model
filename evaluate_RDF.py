@@ -45,7 +45,7 @@ def length_from_exO(position):
     return length_list
 
 
-def RDF(position,sigma=5,R=3.5,dR=0.01,Normalize=False):
+def RDF(position,sigma=5,R=5.0,dR=0.01,Normalize=False):
     length_list = length_from_exO(position)
     num_atom = position.shape[0]
     ro = num_atom/(4/3*np.pi*R**3)
@@ -215,7 +215,7 @@ if __name__ == '__main__':
     wandb.log({'evaluate_RDF':wandb.Image(fig)})
     plt.close(fig)
 
-    x_for_RDF = np.arange(0.01,3.51,0.01)
+    x_for_RDF = np.arange(0.01,5.01,0.01)
 
     gs_cos = GridSpec(2,3,height_ratios=[1,1],width_ratios=[1,1,1])
     fig_cos = plt.figure(figsize=(18,8))

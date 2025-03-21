@@ -25,6 +25,11 @@ from train_per_iretation import diffuse_as_batch, train_epoch, eval_epoch, gener
 from loss_calculation import kabsch_torch
 from def_for_main import load_model_state, evaluate_by_rmsd, noise_schedule_for_GammaNetwork, evaluate_by_rmsd_and_atom_type_eval, define_optimizer
 
+sys.path.append('spectrum_to_latent/')
+from adopter_to_diffusion_model import define_encoder_decoder
+from encoder_decoder import Encoder, Decoder
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -44,6 +49,7 @@ if __name__ == '__main__':
     jst=pytz.timezone('Asia/Tokyo')
     now = datetime.datetime.now(jst)
     prms['now'] = now.strftime("%Y%m%d%H%M")
+    assert prms['to_compress_spectrum'] == False or prms['Encoder_Decoder']['spectrum_to_latent'] == False
 
     #wandbの設定
     assert args.mode in ['train_and_generate','train_only','generate_only','evaluate_only']
@@ -88,6 +94,8 @@ if __name__ == '__main__':
         prms['atom_type_size'] = 5
         wandb.config.update({'atom_type_size':5},allow_val_change=True)
     spectrum_size = prms['spectrum_size']
+    if prms['Encoder_Decoder']['spectrum_to_latent']:
+        spectrum_size = prms['Encoder_Decoder']['latent_dim']
     d_size = prms['d_size']
     t_size = prms['t_size']
     exO_size = prms['exO_size']
@@ -121,20 +129,9 @@ if __name__ == '__main__':
     random.seed(seed)
     np.random.seed(seed)
 
-    #modelの定義
-    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep,noise_schedule=noise_schedule)
-    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
-    if to_compress_spectrum:
-        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
-    early_stopping = EarlyStopping(patience=patience)
+
     setupdata = SetUpData(seed=seed,conditional=conditional)    
 
-    #使用するモデルをまとめた辞書nn_dictを定義
-    if to_compress_spectrum:
-        nn_dict = {'egnn':egnn,'spectrum_compressor':spectrum_compressor}
-    else:
-        nn_dict = {'egnn':egnn,'spectrum_compressor':None}
-    
     #datasetの読み込み
     if args.test_by_provided_data is None:
         dataset_path = args.dataset_path
@@ -143,7 +140,7 @@ if __name__ == '__main__':
         for data in dataset: #spectrumサイズの設定（-1~19eVがデフォルト）
             spectrum = data.spectrum
             #spectrum = data.spectrum_raw
-            resized_spectrum = spectrum[:,:spectrum_size]
+            resized_spectrum = spectrum[:,:200]
             data.spectrum = resized_spectrum
     elif args.test_by_provided_data == 'QM9': #QM9のデータセットを使う場合
         dataset = datasets.QM9('/mnt/homenfsxx/rokubo/data/diffusion_model/dataset/QM9/')
@@ -154,6 +151,19 @@ if __name__ == '__main__':
             data.x = data.x[:,:5] #qm9のデータからatom_typeのみを取り出す
         wandb.config.update({'dataset_path':'QM9'})
 
+    #スペクトルを潜在変数に変換後、グラフに与える
+    if prms['Encoder_Decoder']['spectrum_to_latent']:
+        encoder, decoder = define_encoder_decoder(prms)
+        for data in dataset:
+            spectrum = data.spectrum[0].to('cuda')
+            num_site = data.x.shape[0]
+            with torch.no_grad():
+                latent = encoder(spectrum)
+            latent_tensor = [latent]
+            for i in range(num_site-1):
+                latent_tensor.append(torch.zeros_like(latent))
+            latent_tensor = torch.stack(latent_tensor,dim=0)
+            data.spectrum = latent_tensor
 
     # デバイスの設定
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -171,6 +181,19 @@ if __name__ == '__main__':
     eval_loader = DataLoader(eval_data,batch_size=batch_size,shuffle=True,generator=generator)
 
 
+    #modelの定義
+    diffusion_process = E3DiffusionProcess(s=noise_precision,power=power,num_diffusion_timestep=num_diffusion_timestep,noise_schedule=noise_schedule)
+    egnn = EquivariantGNN(L,m_input_size,m_hidden_size,m_output_size,x_input_size,x_hidden_size,x_output_size,h_input_size,h_hidden_size,h_output_size)
+    if to_compress_spectrum:
+        spectrum_compressor = SpectrumCompressor(spectrum_size,compressor_hidden_dim,compressed_spectrum_size)
+    early_stopping = EarlyStopping(patience=patience)
+
+    #使用するモデルをまとめた辞書nn_dictを定義
+    if to_compress_spectrum:
+        nn_dict = {'egnn':egnn,'spectrum_compressor':spectrum_compressor}
+    else:
+        nn_dict = {'egnn':egnn,'spectrum_compressor':None}
+    
 
 
     #optimizerの設定
@@ -267,13 +290,14 @@ if __name__ == '__main__':
         sorted_atom_type_eval_list = torch.tensor(sorted_atom_type_eval_list).cpu().numpy()
         density_of_O_for_original = [i[0] for i in sorted_atom_type_eval_list]
         density_of_O_for_generated = [i[1] for i in sorted_atom_type_eval_list]
-        fig, ax = plt.subplots()
-        plt.figure(figsize=(10,10))
-        ax.plot(density_of_O_for_original,density_of_O_for_generated,'o')
-        ax.plot([0,1],[0,1],'-',color='red')
+        fig, ax = plt.subplots(figsize=(10,10))
+        ax.plot([0,1],[0,1],'-',color='red',alpha=0.5)
+        ax.plot(density_of_O_for_original,density_of_O_for_generated,'o',alpha=0.5)
         ax.set_xlabel('density of O for original')
         ax.set_ylabel('density of O for generated')
         ax.set_title('atom_type_eval')
+        plt.text(0.05, 0.95, 'accuracy: {:.5f}'.format(len([1 for i in range(len(density_of_O_for_original)) if density_of_O_for_generated[i] == density_of_O_for_original[i]])/len(density_of_O_for_original)), 
+         transform=plt.gca().transAxes, fontsize=12, verticalalignment='top')
         ax.set_xlim(0,1)
         ax.set_ylim(0,1)
         wandb.log({'atom_type_eval':wandb.Image(fig)})

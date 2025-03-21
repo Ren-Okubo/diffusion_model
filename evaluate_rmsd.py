@@ -82,6 +82,8 @@ if __name__ == '__main__':
     for i in tqdm(range(len(original_graph_list))):
         original_graph = original_graph_list[i]
         generated_graph = generated_graph_list[i][-1]
+        if original_graph.pos.shape[0] >10:
+            continue
         id = original_graph.id
         if not id in id_dict:
             id_dict[id] = 1
